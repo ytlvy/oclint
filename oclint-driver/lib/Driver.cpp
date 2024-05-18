@@ -78,6 +78,14 @@ using namespace oclint;
 
 typedef std::vector<std::pair<std::string, clang::tooling::CompileCommand>> CompileCommandPairs;
 
+bool hasEnding (std::string const &fullString, std::string const &ending) {
+    if (fullString.length() >= ending.length()) {
+        return (0 == fullString.compare (fullString.length() - ending.length(), ending.length(), ending));
+    } else {
+        return false;
+    }
+}
+
 static clang::driver::Driver *newDriver(clang::DiagnosticsEngine *diagnostics,
     const char *binaryName)
 {
@@ -302,6 +310,14 @@ static void constructCompilers(std::vector<oclint::CompilerInstance *> &compiler
         LOG_VERBOSE(compileCommand.first.c_str());
         LOG_VERBOSE_LINE(" ...");
         std::string targetDir = stringReplace(compileCommand.second.Directory, "\\ ", " ");
+        targetDir = stringReplace(targetDir, "\\<", "<");
+        targetDir = stringReplace(targetDir, "\\>", ">");
+        targetDir = stringReplace(targetDir, "\\$", "$");
+        targetDir = stringReplace(targetDir, "\\|", "|");
+        targetDir = stringReplace(targetDir, "\\", "");
+        if (hasEnding(targetDir, ".m") || hasEnding(targetDir, ".mm")) {
+            targetDir = targetDir.substr(0, targetDir.find_last_of("\\/"));
+        }
 
         if(chdir(targetDir.c_str()))
         {
@@ -337,6 +353,15 @@ static void invokeClangStaticAnalyzer(
         LOG_VERBOSE("Clang Static Analyzer ");
         LOG_VERBOSE(compileCommand.first.c_str());
         std::string targetDir = stringReplace(compileCommand.second.Directory, "\\ ", " ");
+        targetDir = stringReplace(targetDir, "\\<", "<");
+        targetDir = stringReplace(targetDir, "\\>", ">");
+        targetDir = stringReplace(targetDir, "\\$", "$");
+        targetDir = stringReplace(targetDir, "\\|", "|");
+        targetDir = stringReplace(targetDir, "\\", "");
+        if (hasEnding(targetDir, ".m") || hasEnding(targetDir, ".mm")) {
+            targetDir = targetDir.substr(0, targetDir.find_last_of("\\/"));
+        }
+
         if (chdir(targetDir.c_str()))
         {
             throw oclint::GenericException("Cannot change dictionary into \"" +
