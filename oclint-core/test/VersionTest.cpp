@@ -8,7 +8,7 @@ using namespace oclint;
 
 TEST(VersionTest, VersionString)
 {
-    EXPECT_THAT(Constants::version(), StrEq("23.0"));
+    EXPECT_THAT(Constants::version(), StrEq("24.0"));
 }
 
 TEST(VersionTest, HomepageString)
