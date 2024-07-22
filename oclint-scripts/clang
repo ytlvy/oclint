@@ -11,6 +11,9 @@ arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument('-clean', '--clean', action="store_true")
 args = arg_parser.parse_args()
 
+import os
+import shutil
+
 def clean_module():
     build_path = path.build.clang_build_dir
     path.rm_f(build_path)
@@ -20,6 +23,9 @@ def clean_module():
 def setup_prebuilt_binary():
     build_path = path.build.clang_build_dir
     install_path = path.build.clang_install_dir
+
+    prebuilt_path = os.getenv('PREBUILT_PATH')
+    use_prebuilt = prebuilt_path and os.path.exists(prebuilt_path)
 
     if environment.is_darwin():
         if environment.is_aarch64_or_arm64():
@@ -35,11 +41,16 @@ def setup_prebuilt_binary():
     current_dir = os.getcwd()
     path.mkdir_p(build_path)
     path.cd(build_path)
-    process.call('curl -L -o prebuilt.tar.xz ' + binary_url)
+    
+    if use_prebuilt:
+        shutil.copy(prebuilt_path, 'prebuilt.tar.xz')
+    else:
+        process.call('curl -L -o prebuilt.tar.xz ' + binary_url)
+        
     path.mkdir_p(install_path)
     process.call('tar xf prebuilt.tar.xz -C ' + install_path + ' --strip-components=1')
     path.cd(current_dir)
-
+    
     if environment.is_darwin():
         llvm_exports_cmake_path = os.path.join(install_path, 'lib', 'cmake', 'llvm', 'LLVMExports.cmake')
         llvm_exports_cmake_file = open(llvm_exports_cmake_path, 'r')
