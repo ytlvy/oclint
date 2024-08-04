@@ -48,6 +48,11 @@
 
 #include <unistd.h>
 
+#include <vector>
+#include <string>
+#include <iostream>
+#include <algorithm>
+
 #include <sstream>
 
 #include <llvm/ADT/IntrusiveRefCntPtr.h>
@@ -135,8 +140,9 @@ static const llvm::opt::ArgStringList *getCC1Arguments(clang::driver::Compilatio
 
     if (jobSize == 0)
     {
+        LOG_VERBOSE("Error: compilation contains no job");
         throw oclint::GenericException("compilation contains no job:\n" +
-            compilationJobsToString(jobList) + "\n");
+                                        compilationJobsToString(jobList) + "\n");
     }
 
     bool offloadCompilation = false;
@@ -155,23 +161,47 @@ static const llvm::opt::ArgStringList *getCC1Arguments(clang::driver::Compilatio
     }
     if (jobSize > 1 && !offloadCompilation)
     {
+        LOG_VERBOSE("Error: compilation contains multiple jobs");
         throw oclint::GenericException("compilation contains multiple jobs:\n" +
-            compilationJobsToString(jobList) + "\n");
+                                        compilationJobsToString(jobList) + "\n");
     }
 
     if (!clang::isa<clang::driver::Command>(*jobList.begin()))
     {
+        LOG_VERBOSE("Error: compilation job does not contain correct command");
         throw oclint::GenericException("compilation job does not contain correct command:\n" +
-            compilationJobsToString(jobList) + "\n");
+                                        compilationJobsToString(jobList) + "\n");
     }
 
     const clang::driver::Command &cmd = clang::cast<clang::driver::Command>(*jobList.begin());
     if (llvm::StringRef(cmd.getCreator().getName()) != "clang")
     {
+        LOG_VERBOSE("Error: expected a command for clang compiler");
         throw oclint::GenericException("expected a command for clang compiler");
     }
 
     return &cmd.getArguments();
+}
+// Filter out arguments like -ivfsstatcache <path> to prevent "compilation contains multiple jobs" error.
+// See issue https://github.com/facebook/infer/issues/1749
+static void filterCommandLine(std::vector<std::string>& commandLine)
+{
+    for (auto it = commandLine.begin(); it != commandLine.end();)
+    {
+        if (it->find("-ivfsstatcache") != std::string::npos)
+        {
+            it = commandLine.erase(it); // 删除 -ivfsstatcache
+            if (it != commandLine.end())
+            {
+                it = commandLine.erase(it); // 删除紧随其后的路径参数
+            }
+        }
+        else
+        {
+            ++it; // 移动到下一个元素
+        }
+    }
+
 }
 
 static clang::CompilerInvocation *newCompilerInvocation(
@@ -181,6 +211,9 @@ static clang::CompilerInvocation *newCompilerInvocation(
 {
     assert(!commandLine.empty() && "Command line must not be empty!");
     commandLine[0] = mainExecutable;
+    // Filter out arguments like -ivfsstatcache <path> to prevent "compilation contains multiple jobs" error.
+    // See issue https://github.com/facebook/infer/issues/1749
+    filterCommandLine(commandLine);
 
     std::vector<const char*> argv;
     int start = 0, end = commandLine.size();
@@ -201,8 +234,7 @@ static clang::CompilerInvocation *newCompilerInvocation(
     argv.push_back("-D__OCLINT__");
 
     // create diagnostic engine
-    llvm::IntrusiveRefCntPtr<clang::DiagnosticOptions> diagOpts =
-        new clang::DiagnosticOptions();
+    llvm::IntrusiveRefCntPtr<clang::DiagnosticOptions> diagOpts = new clang::DiagnosticOptions();
     clang::DiagnosticsEngine diagnosticsEngine(
         llvm::IntrusiveRefCntPtr<clang::DiagnosticIDs>(new clang::DiagnosticIDs()),
         &*diagOpts,
@@ -210,28 +242,32 @@ static clang::CompilerInvocation *newCompilerInvocation(
 
     // create driver
     const char *const mainBinaryPath = argv[0];
-    const std::unique_ptr<clang::driver::Driver> driver(
-        newDriver(&diagnosticsEngine, mainBinaryPath));
+    const std::unique_ptr<clang::driver::Driver> driver(newDriver(&diagnosticsEngine, mainBinaryPath));
     driver->setCheckInputsExist(false);
 
     // create compilation invocation
     const std::unique_ptr<clang::driver::Compilation> compilation(
         driver->BuildCompilation(llvm::makeArrayRef(argv)));
     auto cc1Args = getCC1Arguments(compilation.get());
+
     return newInvocation(&diagnosticsEngine, *cc1Args);
 }
 
 static oclint::CompilerInstance *newCompilerInstance(clang::CompilerInvocation *compilerInvocation,
-    bool runClangChecker = false)
+                                                     bool runClangChecker = false)
 {
+
     auto compilerInstance = new oclint::CompilerInstance();
     auto invocation = std::make_shared<clang::CompilerInvocation>(*compilerInvocation);
     compilerInstance->setInvocation(std::move(invocation));
     compilerInstance->createDiagnostics(new DiagnosticDispatcher(runClangChecker));
+
     if (!compilerInstance->hasDiagnostics())
     {
+        LOG_VERBOSE("Error: cannot create compiler diagnostics");
         throw oclint::GenericException("cannot create compiler diagnostics");
     }
+
     return compilerInstance;
 }
 

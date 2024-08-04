@@ -16,3 +16,10 @@ It looks for potential problems that aren't visible to compilers, for example:
 * ...
 
 For more information, visit https://oclint.org
+
+Clone the repository branch that supports Xcode 15 on arm64 Mac
+```
+git clone -b support_xcode15 https://github.com/Lianghuajian/oclint.git oclint 
+
+cd oclint/oclint-scripts && ./make && cd ..
+```

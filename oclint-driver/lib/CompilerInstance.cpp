@@ -62,7 +62,8 @@ static clang::FrontendAction *getFrontendAction() {
 }
 
 void CompilerInstance::setupTarget() {
-    if ((getLangOpts().CUDA || getLangOpts().OpenMPIsDevice) &&
+    // getLangOpts().OpenMPIsDevice is deparecated
+    if ((getLangOpts().CUDA) &&
         !getFrontendOpts().AuxTriple.empty())
     {
         auto targetOptions = std::make_shared<clang::TargetOptions>();
