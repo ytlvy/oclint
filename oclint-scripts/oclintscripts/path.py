@@ -69,7 +69,7 @@ class url:
     json_compilation_database = 'https://github.com/oclint/oclint-json-compilation-database.git'
     xcodebuild = 'https://github.com/oclint/oclint-xcodebuild.git'
 
-    clang_prebuilt_binary_for_macos_arm64 = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-16.0.0/clang+llvm-16.0.0-arm64-apple-darwin22.0.tar.xz'
+    clang_prebuilt_binary_for_macos_arm64 = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-17.0.6/clang+llvm-17.0.6-arm64-apple-darwin22.0.tar.xz'
     clang_prebuilt_binary_for_ubuntu_lts_20 = 'https://github.com/ryuichis/llvm-builder/releases/download/llvm-13.0.1/llvm-13.0.1-x86_64-linux-gnu-ubuntu-20.04.tar.xz'
     clang_prebuilt_binary_for_macos = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.0/clang+llvm-15.0.0-x86_64-apple-darwin.tar.xz'
     clang_prebuilt_binary_for_ubuntu_lts_20_aarch64 = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.0/clang+llvm-15.0.0-x86_64-linux-gnu-rhel-8.4.tar.xz'
