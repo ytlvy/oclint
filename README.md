@@ -19,7 +19,7 @@ For more information, visit https://oclint.org
 
 Clone the repository branch that supports Xcode 15 on arm64 Mac
 ```
-git clone -b support_xcode15 https://github.com/Lianghuajian/oclint.git oclint 
+git clone -b support_Xcode15 https://github.com/Lianghuajian/oclint.git oclint 
 
 cd oclint/oclint-scripts && ./make && cd ..
 ```
