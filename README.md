@@ -17,6 +17,13 @@ It looks for potential problems that aren't visible to compilers, for example:
 
 For more information, visit https://oclint.org
 
+Make sure you have install cmake, ninja ,zstd
+```
+brew install cmake
+brew install ninja
+brew install zstd
+```
+
 Clone the repository branch that supports Xcode 16 on arm64 Mac
 ```
 git clone -b support_Xcode16 https://github.com/Lianghuajian/oclint.git oclint 
