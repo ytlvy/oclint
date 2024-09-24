@@ -24,9 +24,9 @@ brew install ninja
 brew install zstd
 ```
 
-Clone the repository branch that supports Xcode 15 on arm64 Mac
+Clone the repository branch that supports Xcode 16 on arm64 Mac
 ```
-git clone -b support_xcode15 https://github.com/Lianghuajian/oclint.git oclint 
+git clone -b support_Xcode16 https://github.com/Lianghuajian/oclint.git oclint 
 
 cd oclint/oclint-scripts && ./make && cd ..
 ```
