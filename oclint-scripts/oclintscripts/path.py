@@ -66,7 +66,8 @@ class build:
 class url:
     googletest = 'https://github.com/google/googletest.git'
 
-    json_compilation_database = 'https://github.com/oclint/oclint-json-compilation-database.git'
+    # json_compilation_database = 'https://github.com/oclint/oclint-json-compilation-database.git'
+    json_compilation_database = 'https://github.com/sanjin123/oclint-json-compilation-database.git'
     xcodebuild = 'https://github.com/oclint/oclint-xcodebuild.git'
 
     clang_prebuilt_binary_for_macos_arm64 = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-17.0.6/clang+llvm-17.0.6-arm64-apple-darwin22.0.tar.xz'
