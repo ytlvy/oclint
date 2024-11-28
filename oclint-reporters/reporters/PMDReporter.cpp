@@ -77,11 +77,31 @@ private:
         writeViolation(out, violation, &ruleDescription);
     }
 
+    void replaceAll(std::string& str, const std::string& from, const std::string& to) {
++        if(from.empty())
++            return;
++        size_t start_pos = 0;
++        while((start_pos = str.find(from, start_pos)) != std::string::npos) {
++            str.replace(start_pos, from.length(), to);
++            start_pos += to.length(); // In case 'to' contains 'from', like replacing 'x' with 'yx'
++        }
++    }
+
+    void validatePath(std::string &path) {
+        replaceAll(path, "<", "&lt;");
+        replaceAll(path, ">", "&gt;");
+        replaceAll(path, "&", "&amp;");
+        replaceAll(path, "'", "&apos;");
+        replaceAll(path, "\"", "&quot;");
+    }
+
     void writeViolation(std::ostream &out,
                         const Violation &violation,
                         const PMDRuleDescription *ruleDescription)
     {
-        out << "<file name=\"" << violation.path << "\">" << std::endl;
+        std::string filePath = violation.path;
+        validatePath(filePath);
+        out << "<file name=\"" << filePath << "\">" << std::endl;
         out << "<violation ";
         out << "begincolumn=\"" << violation.startColumn << "\" ";
         out << "endcolumn=\"" << violation.endColumn << "\" ";

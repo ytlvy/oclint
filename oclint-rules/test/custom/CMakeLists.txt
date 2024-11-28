@@ -1,0 +1,3 @@
+
+BUILD_TEST(KWCollectionRuleRuleTest
+KWCollectionRuleRuleTest.cpp)
