@@ -88,9 +88,9 @@ private:
     }
 
     void validatePath(std::string &path) {
+        replaceAll(path, "&", "&amp;");
         replaceAll(path, "<", "&lt;");
         replaceAll(path, ">", "&gt;");
-        replaceAll(path, "&", "&amp;");
         replaceAll(path, "'", "&apos;");
         replaceAll(path, "\"", "&quot;");
     }
