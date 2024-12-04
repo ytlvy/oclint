@@ -78,3 +78,4 @@
 /Users/admin/Oclint/oclint/oclint-xcoderules/rules/unused/CMakeFiles/UnusedLocalVariableRule.dir
 /Users/admin/Oclint/oclint/oclint-xcoderules/rules/unused/CMakeFiles/UnusedMethodParameterRule.dir
 /Users/admin/Oclint/oclint/oclint-xcoderules/rules/custom/CMakeFiles/KWCollectionRuleRule.dir
+/Users/admin/Oclint/oclint/oclint-xcoderules/rules/custom/CMakeFiles/KWCollectionMatchRuleRule.dir
