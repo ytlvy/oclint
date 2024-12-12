@@ -106,7 +106,7 @@ class KWCollectionRuleRule : public AbstractASTVisitorRule<KWCollectionRuleRule>
 public:
     virtual const string name() const override
     {
-        return "kuwo collection check rule";
+        return "kuwoCollectionCheckRule";
     }
 
     virtual int priority() const override

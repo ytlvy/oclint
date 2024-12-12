@@ -107,7 +107,7 @@ class KWCollectionMatchRuleRule : public AbstractASTMatcherRule
 public:
     virtual const string name() const override
     {
-        return "k w collection match rule";
+        return "kwCollectionMatchRule";
     }
 
     virtual int priority() const override
