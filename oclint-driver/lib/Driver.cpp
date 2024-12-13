@@ -128,7 +128,10 @@ static std::string compilationJobsToString(const clang::driver::JobList &jobs)
 {
     clang::SmallString<256> errorMsg;
     llvm::raw_svector_ostream errorStream(errorMsg);
-    jobs.Print(errorStream, "; ", true);
+    for (const auto &Job : jobs) {
+        Job.Print(errorStream, "; ", true);
+        errorStream << "--==--" << " ";
+    }
     return errorStream.str().str();
 }
 
