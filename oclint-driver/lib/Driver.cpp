@@ -281,32 +281,32 @@ static oclint::CompilerInstance *newCompilerInstance(clang::CompilerInvocation *
     return compilerInstance;
 }
 
-#ifndef NDEBUG
+// #ifndef NDEBUG
 static void printCompileCommandDebugInfo(
     std::pair<std::string, clang::tooling::CompileCommand> &compileCommand,
     std::vector<std::string> &commandLine)
 {
-    LOG_DEBUG_LINE("-----------------------");
-    LOG_DEBUG("File: ");
-    LOG_DEBUG_LINE(compileCommand.first.c_str());
-    LOG_DEBUG("Directory: ");
-    LOG_DEBUG_LINE(compileCommand.second.Directory.c_str());
-    LOG_DEBUG("Command: ");
+    LOG_VERBOSE_LINE("-----------------------");
+    LOG_VERBOSE("File: ");
+    LOG_VERBOSE_LINE(compileCommand.first.c_str());
+    LOG_VERBOSE("Directory: ");
+    LOG_VERBOSE_LINE(compileCommand.second.Directory.c_str());
+    LOG_VERBOSE("Command: ");
     for (auto& flag : compileCommand.second.CommandLine)
     {
-        LOG_DEBUG(flag.c_str());
-        LOG_DEBUG(" ");
+        LOG_VERBOSE(flag.c_str());
+        LOG_VERBOSE(" ");
     }
-    LOG_DEBUG_LINE("");
-    LOG_DEBUG("Adjusted Command: ");
+    LOG_VERBOSE_LINE("");
+    LOG_VERBOSE("Adjusted Command: ");
     for (auto& cmd : commandLine)
     {
-        LOG_DEBUG(cmd.c_str());
-        LOG_DEBUG(" ");
+        LOG_VERBOSE(cmd.c_str());
+        LOG_VERBOSE(" ");
     }
-    LOG_DEBUG_LINE("");
+    LOG_VERBOSE_LINE("");
 }
-#endif
+// #endif
 
 static std::vector<std::string> adjustArguments(std::vector<std::string> &unadjustedCmdLine,
 	const std::string& filename)
@@ -331,18 +331,45 @@ std::string stringReplace(std::string orig, std::string oldStr, std::string newS
     return orig;
 }
 
+static void replaceAll(std::string& str, const std::string& from, const std::string& to) {
+        if(from.empty())
+            return;
+        size_t start_pos = 0;
+        while((start_pos = str.find(from, start_pos)) != std::string::npos) {
+            str.replace(start_pos, from.length(), to);
+            start_pos += to.length(); // In case 'to' contains 'from', like replacing 'x' with 'yx'
+        }
+    }
+
+static void validatePath(std::string &path) {
+    replaceAll(path, "\\\\", "\\");
+    // replaceAll(path, "&", "\\&");
+    // replaceAll(path, "<", "\\<");
+    // replaceAll(path, ">", "\\>");
+    // replaceAll(path, "(", "\\(");
+    // replaceAll(path, ")", "\\)");
+    // replaceAll(path, "'", "");
+    // replaceAll(path, "\"", "&quot;");
+}
+
+
 static void constructCompilers(std::vector<oclint::CompilerInstance *> &compilers,
     CompileCommandPairs &compileCommands,
     std::string &mainExecutable)
 {
     for (auto &compileCommand : compileCommands)
     {
+        for (auto& flag : compileCommand.second.CommandLine)
+        {
+            validatePath(flag);
+        }
+
         std::vector<std::string> adjustedCmdLine =
             adjustArguments(compileCommand.second.CommandLine, compileCommand.first);
 
-#ifndef NDEBUG
-        printCompileCommandDebugInfo(compileCommand, adjustedCmdLine);
-#endif
+// #ifndef NDEBUG
+        // printCompileCommandDebugInfo(compileCommand, adjustedCmdLine);
+// #endif
 
         LOG_VERBOSE("Compiling ");
         LOG_VERBOSE(compileCommand.first.c_str());
@@ -365,12 +392,41 @@ static void constructCompilers(std::vector<oclint::CompilerInstance *> &compiler
         {
             LOG_VERBOSE(" - Success");
             compilers.push_back(compiler);
+            // static int kGlobalVer = 0;
+            
+            // if(kGlobalVer < 2) {
+            //     printCompileCommandDebugInfo(compileCommand, adjustedCmdLine);
+            // }
+            // kGlobalVer++;
         }
         else
         {
+
+            auto &engine = compiler->getDiagnostics();
+            auto DiagIDs = engine.getDiagnosticIDs();
+
+            // // Get all the diagnostics.
+            // std::vector<clang::diag::kind> AllDiags;
+            // DiagIDs->getAllDiagnostics(clang::diag::Flavor::WarningOrError, AllDiags);
+
+            // LOG_VERBOSE_LINE("build err msg:");
+            // // Set the mapping.
+            // for (clang::diag::kind Diag : AllDiags) {
+            //     clang::StringRef Description = DiagIDs->getDescription(Diag);
+            //     LOG_VERBOSE_LINE(Description);
+            // }
+
+            static int kGlobalVer1 = 0;
+            
             LOG_VERBOSE(" - Failed");
+            if(kGlobalVer1<2) {
+                printCompileCommandDebugInfo(compileCommand, adjustedCmdLine);
+            }
+            
+            kGlobalVer1++;
         }
         LOG_VERBOSE_LINE("");
+        
     }
 }
 
@@ -398,7 +454,7 @@ static void invokeClangStaticAnalyzer(
         compiler->start();
         if (!compiler->getDiagnostics().hasErrorOccurred() && compiler->hasASTContext())
         {
-            LOG_VERBOSE(" - Done");
+            LOG_VERBOSE(" - Done\n\n");
         }
         else
         {
