@@ -393,13 +393,26 @@ public:
             return false;
         }
         
-        // Don't follow #include files
-//        if (forStmt &&
-//            !CI.getSourceManager().isInMainFile(forStmt->getForLoc()))
-//            return false;
-        
         // 获取遍历的集合表达式
         Expr *collectionExpr = forStmt->getCollection();
+        //数组是否来自于字符串切割
+        if(const auto * implicitExpr = dyn_cast<ImplicitCastExpr>(collectionExpr)) {
+            auto ivarExpr = implicitExpr->getSubExpr();
+            if(const auto * decRef = dyn_cast<DeclRefExpr>(ivarExpr)) {
+                auto ivarDec = decRef->getDecl();
+                if(const auto *var = dyn_cast<VarDecl>(ivarDec)) {
+                    auto *expr = var->getInit();
+                    if(const auto * implicitExpr = dyn_cast<ImplicitCastExpr>(expr)) {
+                        auto ivarExpr = implicitExpr->getSubExpr();
+                        if(const auto * objcExp = dyn_cast<ObjCMessageExpr>(ivarExpr)) {
+                            bool isSplitByStr = objcExp->getSelector().getAsString() == "componentsSeparatedByString:";
+                        }
+                    }
+                }
+            }
+        }
+        
+        
         // 获取集合表达式的类型
         const ObjCObjectPointerType *collectionType = dyn_cast<ObjCObjectPointerType>(collectionExpr->getType());
         if (!collectionType || !collectionType->isObjCObjectPointerType()){
