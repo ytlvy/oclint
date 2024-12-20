@@ -11,6 +11,8 @@ oclint-scripts/llvm.sh
 # Compile Commands
 compile_commands.json
 
+CMakeFiles/
+*.cmake
 # Compiled Object files
 *.slo
 *.lo
