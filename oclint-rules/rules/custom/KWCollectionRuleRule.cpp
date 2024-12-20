@@ -7,6 +7,69 @@ using namespace oclint;
 
 class KWToolHelper {
 public:
+    //检测valueVar
+    static bool isValueVarFromStringSeparate(const ValueDecl *ivarDec) {
+        bool isSplitByStr = false;
+        if(nullptr == ivarDec) {
+            return isSplitByStr;
+        }
+        
+        if(const auto *var = dyn_cast<VarDecl>(ivarDec)) {
+            auto *expr = var->getInit();
+            string selector = "componentsSeparatedByString:";
+            isSplitByStr = isObjCMessageExprSelector(expr, selector);
+        }
+        
+        return isSplitByStr;
+    }
+    
+    //检测表达式是否来自obc方法
+    static bool isObjCMessageExprSelector(const Expr *expr, string &selector) {
+       
+        bool isSplitByStr = false;
+        if(nullptr == expr) {
+            return isSplitByStr;
+        }
+        
+        if(const auto * implicitExpr = dyn_cast<ImplicitCastExpr>(expr)) {
+            auto ivarExpr = implicitExpr->getSubExpr();
+            isSplitByStr = isObjCMessageExprSelector(ivarExpr, selector);
+        }
+        else if(const auto * objcExp = dyn_cast<ObjCMessageExpr>(expr)) {
+            isSplitByStr = objcExp->getSelector().getAsString() == selector;
+        }
+        else if (const auto * conExp = dyn_cast<ConditionalOperator>(expr)) {
+            auto *left = conExp->getLHS();
+            auto *right = conExp->getRHS();
+            
+            isSplitByStr = isObjCMessageExprSelector(left, selector) ||
+            isObjCMessageExprSelector(right, selector);
+            printf("");
+        }
+        
+        return isSplitByStr;
+    }
+    
+    //检测数组是否来源于字符串切割
+    static bool CheckArrayFromStringSeparated(Expr *collectionExpr) {
+        bool isSplitByStr = false;
+        if(nullptr == collectionExpr) {
+            return isSplitByStr;
+        }
+        if(const auto * implicitExpr = dyn_cast<ImplicitCastExpr>(collectionExpr)) {
+            auto ivarExpr = implicitExpr->getSubExpr();
+            if(nullptr != ivarExpr) {
+                if(const auto * decRef = dyn_cast<DeclRefExpr>(ivarExpr)) {
+                    auto ivarDec = decRef->getDecl();
+                    isSplitByStr = isValueVarFromStringSeparate(ivarDec);
+                }
+            }
+        }
+        
+        return isSplitByStr;
+    }
+    
+    //检测forin临时变量是否检测了类型
     static bool CheckNestedBlocksForTypeCheck(const Stmt *stmt, VarDecl *TempVar) {
         
         bool hasChecked = false;
@@ -14,10 +77,12 @@ public:
             auto conditionExpr = ifSt->getCond();            
             hasChecked = recursiveCheckForObjCFunctionCall(conditionExpr, TempVar);
         }
-        if (const auto *binaryExpr = dyn_cast<BinaryOperator>(stmt)) {            
+        else if (const auto *binaryExpr = dyn_cast<BinaryOperator>(stmt)) {
             hasChecked = recursiveCheckForObjCFunctionCall(binaryExpr->getRHS(), TempVar);
         }
-        
+        else if(const auto * objcExp = dyn_cast<ObjCMessageExpr>(stmt)) {
+            printf("");
+        }
         
 //        
 //        if (ObjCBlockExpr *BlockExpr = dyn_cast<clang::ObjCBlockExpr>(Stmt)) {
@@ -78,7 +143,8 @@ public:
             
             bool isSafeCast = false;
             if(auto decl = dyn_cast<FunctionDecl>(Call->getCalleeDecl())) {
-                isSafeCast = decl->getDeclName().getAsString() == "kw_safe_cast";
+                isSafeCast = decl->getDeclName().getAsString() == "kw_safe_cast" ||
+                decl->getDeclName().getAsString() == "kw_safe_check";
             }
             bool isSame = checkVarDecSame(*(Call->arg_begin()), TempVar);
             return  isSafeCast && isSame;
@@ -396,22 +462,6 @@ public:
         // 获取遍历的集合表达式
         Expr *collectionExpr = forStmt->getCollection();
         //数组是否来自于字符串切割
-        if(const auto * implicitExpr = dyn_cast<ImplicitCastExpr>(collectionExpr)) {
-            auto ivarExpr = implicitExpr->getSubExpr();
-            if(const auto * decRef = dyn_cast<DeclRefExpr>(ivarExpr)) {
-                auto ivarDec = decRef->getDecl();
-                if(const auto *var = dyn_cast<VarDecl>(ivarDec)) {
-                    auto *expr = var->getInit();
-                    if(const auto * implicitExpr = dyn_cast<ImplicitCastExpr>(expr)) {
-                        auto ivarExpr = implicitExpr->getSubExpr();
-                        if(const auto * objcExp = dyn_cast<ObjCMessageExpr>(ivarExpr)) {
-                            bool isSplitByStr = objcExp->getSelector().getAsString() == "componentsSeparatedByString:";
-                        }
-                    }
-                }
-            }
-        }
-        
         
         // 获取集合表达式的类型
         const ObjCObjectPointerType *collectionType = dyn_cast<ObjCObjectPointerType>(collectionExpr->getType());
@@ -450,11 +500,12 @@ public:
         }
         
         bool res = KWToolHelper::CheckNestedBlocksForTypeCheck(Body->body_front(), loopVarDec);
+        if(KWToolHelper::CheckArrayFromStringSeparated(collectionExpr)) {
+            res = true;
+        }
+        
         if(!res) {
             AppendToViolationSet(forStmt, Description());
-//            DiagnosticsEngine &engine = CI.getDiagnostics();
-//            unsigned int diagID =  engine.getCustomDiagID(DiagnosticsEngine::Warning, "forin类型变量未检测类型");
-//            engine.Report(forStmt->getBeginLoc(), diagID);
         }
         
         return true;

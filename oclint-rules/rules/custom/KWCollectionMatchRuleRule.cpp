@@ -114,6 +114,10 @@ public:
     {
         return 3;
     }
+    
+    string Description() {
+        return "emerat循环未进行localVar类型检测";
+    }
 
     virtual const string category() const override
     {
