@@ -69,6 +69,133 @@ public:
         return isSplitByStr;
     }
     
+    static int findStmtVarIdex(const ObjCMessageExpr *stmt, VarDecl *TempVar) {
+        int indx = 0;
+        bool find = false;
+        for (auto param = stmt->arg_begin(),
+            paramEnd = stmt->arg_end(); param != paramEnd; param++) {
+            auto *parmVarDecl = *param;
+            if (checkVarDecSame(parmVarDecl, TempVar)) {
+                find = true;
+                break;
+            }
+            indx++;
+        }
+        
+        return find ? indx: -1;
+    }
+    
+    static bool CheckFuncOrParmSafeTyped(const Stmt *stmt, VarDecl *TempVar) {
+        bool safeChecked = false;
+        if(const auto * msgExpr = dyn_cast<ObjCMessageExpr>(stmt)) {//检测调用函数是否添加了
+            // 获取消息的接收者
+            const Expr *receiver = msgExpr->getInstanceReceiver();
+            
+            // 获取消息的选择器
+            Selector selector = msgExpr->getSelector();
+            printf("%s \n", selector.getAsString().c_str()); 
+            
+            const ObjCMethodDecl *methodDecl = msgExpr->getMethodDecl(); //函数定义
+            int idx = findStmtVarIdex(msgExpr, TempVar);
+            
+            safeChecked = p_CheckFuncOrParmSafeTyped(methodDecl, idx);
+            if(safeChecked) {
+                return safeChecked;
+            }
+            
+            if(const ObjCInterfaceDecl *interfaceDecl = msgExpr->getReceiverInterface()) {
+                for (ObjCMethodDecl *methodDecl : interfaceDecl->methods()) {                    
+                    if (methodDecl->getSelector() == selector) {
+                        if(p_CheckFuncOrParmSafeTyped(methodDecl, idx)){
+                            safeChecked = true;
+                        }
+                            break;
+                    }
+                }
+            }
+        }
+        
+        return safeChecked;
+    }
+    
+    static bool p_CheckFuncOrParmSafeTyped(const ObjCMethodDecl *decl, int idx) {
+        return  checkObjcDeclSafe(decl) || checkObjcDeclParamSafed(decl, idx);
+    }
+    
+    static bool checkObjcDeclSafe(const ObjCMethodDecl *methodDecl)
+    {    
+        if (methodDecl->hasAttr<AnnotateAttr>()) {
+            const AnnotateAttr* annotateAttr = methodDecl->getAttr<AnnotateAttr>();
+            auto annotation = annotateAttr->getAnnotation();
+            if (annotation.find("kw_safe_func")!= std::string::npos) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    static bool checkObjcDeclParamSafed(const ObjCMethodDecl *methodDecl, int idx)
+    {        
+        bool safeCheck = false;
+        
+        auto visitNameFuc = [&](const ParmVarDecl *parmVarDecl)->void{
+            const AnnotateAttr* annotateAttr = parmVarDecl->getAttr<AnnotateAttr>();
+            auto annotation = annotateAttr->getAnnotation();
+            if (annotation.find("kw_safe_param")!= std::string::npos) {
+                safeCheck = true;
+            }
+        };
+        
+        if (idx < methodDecl->param_size()) {
+            const ParmVarDecl *parmVarDecl = methodDecl->getParamDecl((unsigned)idx);
+            if (parmVarDecl->getNameAsString() != "")
+            {
+                visitNameFuc(parmVarDecl);
+            }
+        }        
+        
+        return safeCheck;
+    }
+    
+   static bool VisitFunctionDeclParam(const FunctionDecl *decl, VarDecl *TempVar, const std::function<void(const ParmVarDecl *)> &visitNameFuc)
+    {
+        vector<string> names;
+        for (size_t i = 0; i != decl->getNumParams(); ++i)
+        {
+            const ParmVarDecl *parmVarDecl = decl->getParamDecl((unsigned)i);
+            if (parmVarDecl->getNameAsString() != "" && parmVarDecl == TempVar && visitNameFuc)
+            {
+                visitNameFuc(parmVarDecl);
+            }
+        }
+    }
+
+    static bool VisitObjCMethodDeclParam(const ObjCMethodDecl *decl, VarDecl *TempVar, const std::function<void(const ParmVarDecl *)> &visitNameFuc)
+    {
+        for (auto param = decl->param_begin(),
+            paramEnd = decl->param_end(); param != paramEnd; param++)
+        {
+            auto *parmVarDecl = *param;
+            if (parmVarDecl->getNameAsString() != "" &&  parmVarDecl == TempVar && visitNameFuc)
+            {
+                visitNameFuc(parmVarDecl);
+            }
+        }
+    }
+    
+   
+    
+    static bool checkIfHasAttribute(const ObjCMethodDecl *methodDecl)
+    {
+        for (Attr *attr : methodDecl->attrs()) {
+            if (!strcmp(attr->getSpelling(), "objc_same_type")) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
     //检测forin临时变量是否检测了类型
     static bool CheckNestedBlocksForTypeCheck(const Stmt *stmt, VarDecl *TempVar) {
         
@@ -77,12 +204,14 @@ public:
             auto conditionExpr = ifSt->getCond();            
             hasChecked = recursiveCheckForObjCFunctionCall(conditionExpr, TempVar);
         }
-        else if (const auto *binaryExpr = dyn_cast<BinaryOperator>(stmt)) {
+        else if (const auto *binaryExpr = dyn_cast<BinaryOperator>(stmt)) {            
             hasChecked = recursiveCheckForObjCFunctionCall(binaryExpr->getRHS(), TempVar);
         }
-        else if(const auto * objcExp = dyn_cast<ObjCMessageExpr>(stmt)) {
-            printf("");
+        
+        if(!hasChecked) {
+            hasChecked = CheckFuncOrParmSafeTyped(stmt, TempVar);
         }
+        
         
 //        
 //        if (ObjCBlockExpr *BlockExpr = dyn_cast<clang::ObjCBlockExpr>(Stmt)) {
@@ -499,8 +628,11 @@ public:
             return false;
         }
         
+        //检测forin遍历变量是否采用了类型检测
         bool res = KWToolHelper::CheckNestedBlocksForTypeCheck(Body->body_front(), loopVarDec);
-        if(KWToolHelper::CheckArrayFromStringSeparated(collectionExpr)) {
+        
+        //是否数组来自字符串切割
+        if(!res && KWToolHelper::CheckArrayFromStringSeparated(collectionExpr)) {
             res = true;
         }
         
