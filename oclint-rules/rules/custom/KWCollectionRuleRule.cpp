@@ -135,12 +135,28 @@ public:
         return false;
     }
     
+    static bool isDeclHaveAttr(const Decl *aDecl, const string &attr_name)
+    {    
+        if (aDecl->hasAttr<AnnotateAttr>()) {
+            const AnnotateAttr* annotateAttr = aDecl->getAttr<AnnotateAttr>();
+            auto annotation = annotateAttr->getAnnotation();
+            if (annotation.find(attr_name)!= std::string::npos) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
     static bool checkObjcDeclParamSafed(const ObjCMethodDecl *methodDecl, int idx)
     {        
         bool safeCheck = false;
         
         auto visitNameFuc = [&](const ParmVarDecl *parmVarDecl)->void{
             const AnnotateAttr* annotateAttr = parmVarDecl->getAttr<AnnotateAttr>();
+            if(annotateAttr == NULL) {
+                return;
+            }
             auto annotation = annotateAttr->getAnnotation();
             if (annotation.find("kw_safe_param")!= std::string::npos) {
                 safeCheck = true;
@@ -619,6 +635,11 @@ public:
         
         //变量未使用
         if(!loopVarDec->isUsed()) {
+            return false;
+        }
+        
+        //变量有跳过标记
+        if(KWToolHelper::isDeclHaveAttr(loopVarDec, "kw_safe_bypass")) {
             return false;
         }
         
