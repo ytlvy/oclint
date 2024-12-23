@@ -4,3 +4,9 @@ KWCollectionRuleRuleTest.cpp)
 
 BUILD_TEST(KWCollectionMatchRuleRuleTest
 KWCollectionMatchRuleRuleTest.cpp)
+
+BUILD_TEST(KWPropertyRuleRuleTest
+KWPropertyRuleRuleTest.cpp)
+
+BUILD_TEST(KWSameTypeRuleRuleTest
+KWSameTypeRuleRuleTest.cpp)

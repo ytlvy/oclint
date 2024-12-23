@@ -115,8 +115,12 @@ public:
         return 3;
     }
     
+    bool AppendToViolationSet(const ObjCMessageExpr *node, string description) {
+        addViolation(node, this, description);
+    }
+    
     string Description() {
-        return "emerat循环未进行localVar类型检测";
+        return "emerate循环未进行localVar类型检测";
     }
 
     virtual const string category() const override
@@ -132,7 +136,7 @@ public:
 
     virtual const std::string description() const override
     {
-        return ""; // TODO: fill in the description of the rule.
+        return "emerate循环未进行localVar类型检测"; // TODO: fill in the description of the rule.
     }
 
     virtual const std::string example() const override
@@ -228,7 +232,7 @@ public:
                 auto blockBody = blockDecl->getCompoundBody();
                 bool res =  KWToolHelper::CheckNestedBlocksForTypeCheck(blockBody->body_front(), loopVarDec);
                 if(!res) {
-                    addViolation(enumerateExp, this);
+                    AppendToViolationSet(enumerateExp, Description());
                 }
             }
             
@@ -237,16 +241,7 @@ public:
     }
 
     virtual void setUpMatcher() override
-    {
-        //属性声明检测
-        addMatcher(objcPropertyDecl().bind("objcPropertyDecl"));
-        
-        //类声明检测
-//       addMatcher(objcInterfaceDecl().bind("objcInterfaceDecl"));
-        
-        //赋值类型检测
-//        addMatcher(binaryOperator(hasOperatorName("=")).bind("binaryOperator"));
-        
+    {   
         //enumerateObjectsUsingBlock检测
         addMatcher(objcMessageExpr(hasSelector("enumerateObjectsUsingBlock:")).bind("enumerateObjectExpr"));
     }

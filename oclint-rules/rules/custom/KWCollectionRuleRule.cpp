@@ -333,7 +333,8 @@ public:
     bool AppendToViolationSet(ObjCForCollectionStmt *node, string description) {
         addViolation(node, this, description);
     }
-    string Description() {
+    string Description() 
+    {
         return "for循环未进行localVar类型检测";
     }
 
@@ -345,7 +346,7 @@ public:
 
     virtual const std::string description() const override
     {
-        return "for循环检测"; // TODO: fill in the description of the rule.
+        return "for循环未进行localVar类型检测"; // TODO: fill in the description of the rule.
     }
 
     virtual const std::string example() const override
