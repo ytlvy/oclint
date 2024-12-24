@@ -18,6 +18,12 @@ public:
             auto *expr = var->getInit();
             string selector = "componentsSeparatedByString:";
             isSplitByStr = isObjCMessageExprSelector(expr, selector);
+            
+            if(!isSplitByStr) {
+                selector = "tracksWithMediaType:";
+                isSplitByStr = isObjCMessageExprSelector(expr, selector);
+            }
+            
         }
         
         return isSplitByStr;

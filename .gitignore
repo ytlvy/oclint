@@ -1,6 +1,8 @@
 # Optional modules
 oclint-json-compilation-database/
 oclint-xcodebuild/
+CMakeFiles/
+*.cmake
 
 # Third-party dependencies and build directory
 googletest/
@@ -33,3 +35,5 @@ CMakeFiles/
 # System files
 .DS_Store
 .vscode/
+prebuilt.tar.xz
+oclint-xcoderules/OCLINT_RULES.xcodeproj/project.xcworkspace/contents.xcworkspacedata
