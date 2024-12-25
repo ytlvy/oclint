@@ -23,6 +23,34 @@ public:
         return "赋值两侧类型不符";
     }
     
+    bool checkIfHasAttribute(ObjCMethodDecl *methodDecl)
+    {
+        for (Attr *attr : methodDecl->attrs()) {
+            if (!strcmp(attr->getSpelling(), "objc_same_type")) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    string getPropertyType(const ObjCPropertyRefExpr *expr)
+    {
+        if(!expr->isImplicitProperty()) {
+            ObjCPropertyDecl * decl = expr->getExplicitProperty();
+            if(decl){
+                return decl->getType().getAsString();
+            }
+        }
+        
+        return "";
+    }
+    
+    string removePtrString(const string typeString)
+    {
+        size_t lastindex = typeString.find_last_of("*");
+        return typeString.substr(0, lastindex);
+    }
+    
     void checkSameType(const BinaryOperator *binaryOperator) {
         ObjCPropertyRefExpr *leftExpr = dyn_cast_or_null<ObjCPropertyRefExpr>(binaryOperator->getLHS());
         OpaqueValueExpr *rightExpr = dyn_cast_or_null<OpaqueValueExpr>(binaryOperator->getRHS());
@@ -32,21 +60,27 @@ public:
         
         //如果左边表达式是 Objective-C 类的属性的话，获取该属性对应的类型 A
         std::string propertyName = leftExpr->getGetterSelector().getAsString();
-        string leftType = removePtrString(getPropertyType(propertyName));
+        string leftType = removePtrString(getPropertyType(leftExpr));
         
+        auto *sourceExpr = rightExpr->getSourceExpr();
         //如果右边表达式是 Objective-C 的函数调用
-        ImplicitCastExpr *castExpr = dyn_cast_or_null<ImplicitCastExpr>(rightExpr->getSourceExpr());
-        if (!castExpr) { 
+        
+        ImplicitCastExpr *castExpr = dyn_cast_or_null<ImplicitCastExpr>(sourceExpr);
+        if (!castExpr) {
             return;
         }
         
         ObjCMessageExpr *messageExpr = dyn_cast_or_null<ObjCMessageExpr>(castExpr->getSubExpr());
-        if (!messageExpr) { 
-            return;
+        if (messageExpr) {
+            p_checkSameType(messageExpr, leftType);
         }
         
+        
+    }
+    
+    bool p_checkSameType(ObjCMessageExpr *messageExpr, string leftType) {
         //        ObjCMessageExpr *messageExpr = dyn_cast_or_null<ObjCMessageExpr>(rightExpr->getSourceExpr());
-        //        if (!messageExpr) { 
+        //        if (!messageExpr) {
         //            return;
         //        }
         
@@ -63,14 +97,14 @@ public:
                 //右值类型
                 string rightType = removePtrString(callClassExpr->getClassReceiver().getAsString());
                 if (leftType.find(rightType) == std::string::npos) { //类型不相符
-                    AppendToViolationSet(propertyDecl, "类型不一致：左边" + leftType + "右边" + rightType );
+                    AppendToViolationSet(binaryOperator, "类型不一致：左边" + leftType + "右边" + rightType );
                 }
             }
         }
     }
     
-    bool AppendToViolationSet(ObjCForCollectionStmt *node, string description) {
-        addViolation(node, this, description);
+    bool AppendToViolationSet(const BinaryOperator *binaryOperator, string description) {
+        addViolation(binaryOperator, this, description);
     }
     
     virtual const string category() const override
@@ -133,8 +167,8 @@ public:
     
     virtual void callback(const MatchFinder::MatchResult &result) override
     {
-        const BinaryOperator *binaryOperator = Result.Nodes.getNodeAs<BinaryOperator>("binaryOperator");
-        if (binaryOperator && isUserSourceStmt(binaryOperator) && binaryOperator->isAssignmentOp()) {
+        const BinaryOperator *binaryOperator = result.Nodes.getNodeAs<BinaryOperator>("binaryOperator");
+        if (binaryOperator && binaryOperator->isAssignmentOp()) {
             checkSameType(binaryOperator);
         }
     }

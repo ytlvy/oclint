@@ -42,7 +42,11 @@ public:
             isSplitByStr = isObjCMessageExprSelector(ivarExpr, selector);
         }
         else if(const auto * objcExp = dyn_cast<ObjCMessageExpr>(expr)) {
-            isSplitByStr = objcExp->getSelector().getAsString() == selector;
+            std::string strArray[] = {"componentsSeparatedByString:",
+                "tracksWithMediaType:",
+                "matchesInString:options:range:"};
+            auto result = std::find(std::begin(strArray), std::end(strArray), objcExp->getSelector().getAsString());
+            isSplitByStr = result!= std::end(strArray);
         }
         else if (const auto * conExp = dyn_cast<ConditionalOperator>(expr)) {
             auto *left = conExp->getLHS();
