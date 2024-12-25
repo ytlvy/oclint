@@ -32,7 +32,7 @@ public:
         }
         return false;
     }
-    
+
     string getPropertyType(const ObjCPropertyRefExpr *expr)
     {
         if(!expr->isImplicitProperty()) {
@@ -41,7 +41,7 @@ public:
                 return decl->getType().getAsString();
             }
         }
-        
+
         return "";
     }
     
@@ -65,45 +65,85 @@ public:
         auto *sourceExpr = rightExpr->getSourceExpr();
         //如果右边表达式是 Objective-C 的函数调用
         
-        ImplicitCastExpr *castExpr = dyn_cast_or_null<ImplicitCastExpr>(sourceExpr);
-        if (!castExpr) {
+    
+        if (ObjCMessageExpr *messageExpr = dyn_cast_or_null<ObjCMessageExpr>(rightExpr->getSourceExpr())) {
+            p_checkSameType(binaryOperator, messageExpr, leftType);
             return;
         }
         
-        ObjCMessageExpr *messageExpr = dyn_cast_or_null<ObjCMessageExpr>(castExpr->getSubExpr());
-        if (messageExpr) {
-            p_checkSameType(messageExpr, leftType);
+        if (ImplicitCastExpr *castExpr = dyn_cast_or_null<ImplicitCastExpr>(sourceExpr)) {
+            ObjCMessageExpr *messageExpr = dyn_cast_or_null<ObjCMessageExpr>(castExpr->getSubExpr());
+            if (messageExpr) {
+                p_checkSameType(binaryOperator, messageExpr, leftType);
+            }
         }
         
-        
+        if(auto *pseudoExpr = dyn_cast_or_null<PseudoObjectExpr>(sourceExpr)){
+            ObjCMessageExpr *messageExpr = dyn_cast_or_null<ObjCMessageExpr>(pseudoExpr->getResultExpr());
+            if (messageExpr) {
+                p_checkSameType(binaryOperator, messageExpr, leftType);
+            };
+            
+        }
+        printf("");
     }
     
-    bool p_checkSameType(ObjCMessageExpr *messageExpr, string leftType) {
-        //        ObjCMessageExpr *messageExpr = dyn_cast_or_null<ObjCMessageExpr>(rightExpr->getSourceExpr());
-        //        if (!messageExpr) {
-        //            return;
-        //        }
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const ObjCMessageExpr *messageExpr, string leftType) {
         
         //检测是否有指定标记 objc_same_type
-        ObjCMethodDecl *methodDecl = messageExpr->getMethodDecl(); //函数定义
-        if (!checkIfHasAttribute(methodDecl)) {
-            //            return;
-        }
+        const ObjCMethodDecl *methodDecl = messageExpr->getMethodDecl(); //函数定义
         
-        for (Stmt *stmt : messageExpr->arguments()) {
-            ObjCMessageExpr *callClassExpr = dyn_cast_or_null<ObjCMessageExpr>(stmt);
-            if (callClassExpr && callClassExpr->getSelector().getAsString() == "class") {
-                
-                //右值类型
-                string rightType = removePtrString(callClassExpr->getClassReceiver().getAsString());
-                if (leftType.find(rightType) == std::string::npos) { //类型不相符
-                    AppendToViolationSet(binaryOperator, "类型不一致：左边" + leftType + "右边" + rightType );
+        auto resType = methodDecl->getReturnType();
+        if(auto T = dyn_cast_or_null<AttributedType>(resType)){
+            if(auto type = dyn_cast_or_null<ObjCTypeParamType>(T->desugar())) {
+                if(auto ty = dyn_cast_or_null<ObjCObjectPointerType>(type->desugar())) {
+                    string tname =  getObjcObjectType(ty);
+                    if(leftType != tname) {
+                        AppendToViolationSet(binaryOperator, "类型不一致：左边" + leftType + "右边" + tname);
+                    }
                 }
             }
         }
     }
     
-    bool AppendToViolationSet(const BinaryOperator *binaryOperator, string description) {
+    bool isObjcTypeId(const ObjCObjectPointerType *objType) {
+        bool ret = false;
+        auto type = objType->getObjectType();
+        if(auto ty = dyn_cast_or_null<ObjCObjectType>(type)) {
+            ret = ty->isObjCId();
+        }
+        
+        return ret;
+    }
+    
+    string getObjcObjectType(const ObjCObjectPointerType *objType)
+    {
+        string ret = "";
+        auto type = objType->getObjectType();
+        if(const ObjCObjectType *ty = dyn_cast_or_null<ObjCObjectType>(type)) {
+            QualType T1 = ty->desugar();
+            ret = T1.getAsString();
+        }
+        return ret;
+    }
+    
+    string findObjcExprParamClassType(const ObjCMessageExpr *messageExpr) {
+        string rightType = "";
+        for (auto *stmt : messageExpr->arguments()) {
+            auto *callClassExpr = dyn_cast_or_null<ObjCMessageExpr>(stmt);
+            if (callClassExpr && callClassExpr->getSelector().getAsString() == "class") {
+                rightType = removePtrString(callClassExpr->getClassReceiver().getAsString());
+                break;
+            }
+        }
+        return rightType;
+    }
+    
+//    if (leftType.find(rightType) == std::string::npos) { //类型不相符
+//        
+//    }
+    
+    bool AppendToViolationSet(const BinaryOperator *binaryOperator, const string &description) {
         addViolation(binaryOperator, this, description);
     }
     
