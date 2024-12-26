@@ -1,5 +1,6 @@
 #include "oclint/AbstractASTMatcherRule.h"
 #include "oclint/RuleSet.h"
+#include <iostream>
 
 using namespace std;
 using namespace clang;
@@ -45,50 +46,118 @@ public:
         return "";
     }
     
+    string rtrim(const std::string& str) {
+        size_t endPos = str.find_last_not_of(" \t\n\r\f\v");
+        if (endPos!= std::string::npos) {
+            return str.substr(0, endPos + 1);
+        }
+        return "";
+    }
+    
+    void replaceAll(std::string& str, const std::string& from, const std::string& to) {
+        if(from.empty())
+            return;
+        size_t start_pos = 0;
+        while((start_pos = str.find(from, start_pos)) != std::string::npos) {
+            str.replace(start_pos, from.length(), to);
+            start_pos += to.length(); // In case 'to' contains 'from', like replacing 'x' with 'yx'
+        }
+    }
+    
+    void removeEnumString(string &typeString)
+    {
+        replaceAll(typeString, "enum ", "");
+    }
+    
     string removePtrString(const string typeString)
     {
         size_t lastindex = typeString.find_last_of("*");
         return typeString.substr(0, lastindex);
     }
     
-    void checkSameType(const BinaryOperator *binaryOperator) {
-        ObjCPropertyRefExpr *leftExpr = dyn_cast_or_null<ObjCPropertyRefExpr>(binaryOperator->getLHS());
-        OpaqueValueExpr *rightExpr = dyn_cast_or_null<OpaqueValueExpr>(binaryOperator->getRHS());
-        if (!leftExpr || !rightExpr) { 
-            return;
-        }
-        
-        //如果左边表达式是 Objective-C 类的属性的话，获取该属性对应的类型 A
-        std::string propertyName = leftExpr->getGetterSelector().getAsString();
-        string leftType = removePtrString(getPropertyType(leftExpr));
-        
-        auto *sourceExpr = rightExpr->getSourceExpr();
-        //如果右边表达式是 Objective-C 的函数调用
-        
     
-        if (ObjCMessageExpr *messageExpr = dyn_cast_or_null<ObjCMessageExpr>(rightExpr->getSourceExpr())) {
-            p_checkSameType(binaryOperator, messageExpr, leftType);
-            return;
+    
+    void checkSameType(const BinaryOperator *binaryOperator) {
+        auto left = binaryOperator->getLHS();
+        auto right = binaryOperator->getRHS();
+        //            std::string propertyName = leftExpr->getGetterSelector().getAsString();
+
+        string leftType = "";
+        const OpaqueValueExpr *rightExpr = nullptr;
+        if (ObjCPropertyRefExpr *leftExpr = dyn_cast_or_null<ObjCPropertyRefExpr>(left)) 
+        { 
+            leftType = rtrim(removePtrString(getPropertyType(leftExpr)));
         }
         
-        if (ImplicitCastExpr *castExpr = dyn_cast_or_null<ImplicitCastExpr>(sourceExpr)) {
-            ObjCMessageExpr *messageExpr = dyn_cast_or_null<ObjCMessageExpr>(castExpr->getSubExpr());
-            if (messageExpr) {
-                p_checkSameType(binaryOperator, messageExpr, leftType);
-            }
+        if (OpaqueValueExpr *rightE = dyn_cast_or_null<OpaqueValueExpr>(right)) 
+        { //如果右边表达式是 Objective-C 的函数调用
+            rightExpr = rightE;
         }
-        
-        if(auto *pseudoExpr = dyn_cast_or_null<PseudoObjectExpr>(sourceExpr)){
-            ObjCMessageExpr *messageExpr = dyn_cast_or_null<ObjCMessageExpr>(pseudoExpr->getResultExpr());
-            if (messageExpr) {
-                p_checkSameType(binaryOperator, messageExpr, leftType);
-            };
+        else if (ImplicitCastExpr *rightE = dyn_cast_or_null<ImplicitCastExpr>(right)) {
             
         }
+        
+        if(leftType.size()>0 && rightExpr != nullptr) {
+            p_checkSameType(binaryOperator, rightExpr, leftType);
+        }
+        else {
+            left->dump();
+            right->dump();
+            
+            printf("");
+            assert(false);
+        }
+        
         printf("");
     }
     
-    bool p_checkSameType(const BinaryOperator *binaryOperator, const ObjCMessageExpr *messageExpr, string leftType) {
+    const ObjCMessageExpr *getObjcExpr(const Expr *expr) {
+        const ObjCMessageExpr *rightExpr = nullptr;
+        if (auto *messageExpr = dyn_cast_or_null<ObjCMessageExpr>(expr)) {
+            rightExpr = messageExpr;
+        }
+        else if (auto *castExpr = dyn_cast_or_null<ImplicitCastExpr>(expr)) {
+            return getObjcExpr(castExpr->getSubExpr());
+        }
+        else if(auto *pseudoExpr = dyn_cast_or_null<PseudoObjectExpr>(expr)){
+            return getObjcExpr(pseudoExpr->getResultExpr());
+        }
+        else {
+            expr->dump();
+            printf("");
+        }
+        
+        return rightExpr;
+    }
+    
+    void p_checkSameType(const BinaryOperator *binaryOperator, const OpaqueValueExpr *rightExpr, string leftType) {
+//        const ObjCMessageExpr * objcExpr = ;
+        auto *expr = rightExpr->getSourceExpr();
+        if(auto messageExpr = dyn_cast_or_null<ObjCMessageExpr>(getObjcExpr(expr))) {
+             p_checkSameType(binaryOperator, messageExpr, leftType);
+        }
+        else if(auto E = dyn_cast_or_null<DeclRefExpr>(expr)) {
+             p_checkSameType(binaryOperator, E, leftType);
+        }
+        else {
+            assert(false);
+        }
+        
+    }
+    
+    void p_checkSameType(const BinaryOperator *binaryOperator, const DeclRefExpr *expr, string leftType) {
+        string tname = expr->getType().getAsString();
+        removeEnumString(tname);
+        if(leftType != tname) {
+            AppendToViolationSet(binaryOperator, "类型不一致：左边" + leftType + "右边" + tname);
+        }
+        else {
+            std::cout << "类型一致" << leftType <<endl;
+            return;
+        }
+    }
+    
+    void p_checkSameType(const BinaryOperator *binaryOperator, const ObjCMessageExpr *messageExpr, string leftType) {
         
         //检测是否有指定标记 objc_same_type
         const ObjCMethodDecl *methodDecl = messageExpr->getMethodDecl(); //函数定义
@@ -100,10 +169,29 @@ public:
                     string tname =  getObjcObjectType(ty);
                     if(leftType != tname) {
                         AppendToViolationSet(binaryOperator, "类型不一致：左边" + leftType + "右边" + tname);
+                        return;
+                    }
+                    else {
+                        std::cout << "类型一致" << leftType <<endl;
+                        return;
                     }
                 }
             }
         }
+        else if(auto ty = dyn_cast_or_null<ObjCObjectPointerType>(resType)) {
+            string tname =  getObjcObjectType(ty);
+            if(leftType != tname) {
+                AppendToViolationSet(binaryOperator, "类型不一致：左边" + leftType + "右边" + tname);
+                return;
+            }
+            else {
+                std::cout << "类型一致" << leftType <<endl;
+                return;
+            }
+        }
+        
+        assert(false);
+        
     }
     
     bool isObjcTypeId(const ObjCObjectPointerType *objType) {
