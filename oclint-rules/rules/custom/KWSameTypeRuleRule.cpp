@@ -10,6 +10,8 @@ using namespace oclint;
 class KWSameTypeRuleRule : public AbstractASTMatcherRule
 {
 public:
+    static int kGlobalNum;
+    
     virtual const string name() const override
     {
         return "kuwoSameTypeRule";
@@ -77,44 +79,74 @@ public:
     
     
     
-    void checkSameType(const BinaryOperator *binaryOperator) {
+    void doCheckSameType(const BinaryOperator *binaryOperator) {
+        kGlobalNum ++;
+        
         auto left = binaryOperator->getLHS();
         auto right = binaryOperator->getRHS();
         //            std::string propertyName = leftExpr->getGetterSelector().getAsString();
 
-        string leftType = "";
-        const OpaqueValueExpr *rightExpr = nullptr;
-        if (ObjCPropertyRefExpr *leftExpr = dyn_cast_or_null<ObjCPropertyRefExpr>(left)) 
+        string lType = "";
+        bool isChecked = false;
+        if (auto *leftExpr = dyn_cast_or_null<ObjCPropertyRefExpr>(left)) 
         { 
-            leftType = rtrim(removePtrString(getPropertyType(leftExpr)));
+            lType = rtrim(removePtrString(getPropertyType(leftExpr)));
+        }
+        else  if (auto *leftExpr = dyn_cast_or_null<DeclRefExpr>(left)) 
+        {
+            lType = getExprType(leftExpr);
         }
         
-        if (OpaqueValueExpr *rightE = dyn_cast_or_null<OpaqueValueExpr>(right)) 
+        if (OpaqueValueExpr *rExpr = dyn_cast_or_null<OpaqueValueExpr>(right)) 
         { //如果右边表达式是 Objective-C 的函数调用
-            rightExpr = rightE;
+            if(lType.size()>0 && rExpr != nullptr) {
+                isChecked = p_checkSameType(binaryOperator, rExpr, lType);
+            }
         }
         else if (ImplicitCastExpr *rightE = dyn_cast_or_null<ImplicitCastExpr>(right)) {
+            auto *rExpr = getObjcExpr(rightE->getSubExpr());
+            if(lType.size()>0 && rExpr != nullptr) {
+                isChecked = p_checkSameType(binaryOperator, rExpr, lType);
+            }
             
+            auto *rExpr1 = getDeclRefExpr(rightE->getSubExpr());
+            if(lType.size()>0 && rExpr1)
+            {
+                isChecked = p_checkSameType(binaryOperator, rExpr1, lType);
+            }
+        }
+        else if (ObjCMessageExpr *rExpr = dyn_cast_or_null<ObjCMessageExpr>(right)) 
+        { //如果右边表达式是 Objective-C 的函数调用
+            if(lType.size()>0 && rExpr != nullptr) {
+                isChecked = p_checkSameType(binaryOperator, rExpr, lType);
+            }
+        }
+        else if (ObjCBoxedExpr *rExpr = dyn_cast_or_null<ObjCBoxedExpr>(right)) 
+        { //如果右边表达式是 Objective-C 的函数调用
+            if(lType.size()>0 && rExpr != nullptr) {
+                isChecked = p_checkSameType(binaryOperator, rExpr, lType);
+            }
         }
         
-        if(leftType.size()>0 && rightExpr != nullptr) {
-            p_checkSameType(binaryOperator, rightExpr, leftType);
-        }
-        else {
+        
+        if(isChecked == false) {
+            cout << "当前" << kGlobalNum << "未解析成功 left: type:" << lType << "\n";
             left->dump();
+            
+            printf("当前%d未解析成功 right:\n", kGlobalNum);
             right->dump();
             
-            printf("");
+            printf("%d 当前%d未解析成功\n", __LINE__, kGlobalNum);
             assert(false);
         }
         
-        printf("");
+        printf("\n\n");
     }
     
     const ObjCMessageExpr *getObjcExpr(const Expr *expr) {
         const ObjCMessageExpr *rightExpr = nullptr;
         if (auto *messageExpr = dyn_cast_or_null<ObjCMessageExpr>(expr)) {
-            rightExpr = messageExpr;
+            return messageExpr;
         }
         else if (auto *castExpr = dyn_cast_or_null<ImplicitCastExpr>(expr)) {
             return getObjcExpr(castExpr->getSubExpr());
@@ -123,76 +155,159 @@ public:
             return getObjcExpr(pseudoExpr->getResultExpr());
         }
         else {
+            printf("%d getObjcExpr 不是 ObjCMessageExprn: %d\n", __LINE__, kGlobalNum);
             expr->dump();
-            printf("");
         }
         
         return rightExpr;
     }
     
-    void p_checkSameType(const BinaryOperator *binaryOperator, const OpaqueValueExpr *rightExpr, string leftType) {
+    const DeclRefExpr *getDeclRefExpr(const Expr *expr) {
+        const DeclRefExpr *rightExpr = nullptr;
+        if(auto *declExpr = dyn_cast_or_null<DeclRefExpr>(expr)){
+            return declExpr;
+        }
+        else if (auto *castExpr = dyn_cast_or_null<ImplicitCastExpr>(expr)) {
+            return getDeclRefExpr(castExpr->getSubExpr());
+        }
+        else if(auto *pseudoExpr = dyn_cast_or_null<PseudoObjectExpr>(expr)){
+            return getDeclRefExpr(pseudoExpr->getResultExpr());
+        }
+        else {
+            printf("%d getObjcExpr 不是 DeclRefExpr: %d\n", __LINE__, kGlobalNum);
+            expr->dump();
+            printf("\n");
+        }
+        
+        return rightExpr;
+    }
+    
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const OpaqueValueExpr *rightExpr, string leftType) {
 //        const ObjCMessageExpr * objcExpr = ;
         auto *expr = rightExpr->getSourceExpr();
         if(auto messageExpr = dyn_cast_or_null<ObjCMessageExpr>(getObjcExpr(expr))) {
-             p_checkSameType(binaryOperator, messageExpr, leftType);
+            return p_checkSameType(binaryOperator, messageExpr, leftType);
         }
         else if(auto E = dyn_cast_or_null<DeclRefExpr>(expr)) {
-             p_checkSameType(binaryOperator, E, leftType);
+            return p_checkSameType(binaryOperator, E, leftType);
         }
         else {
             assert(false);
         }
         
+        return false;
     }
     
-    void p_checkSameType(const BinaryOperator *binaryOperator, const DeclRefExpr *expr, string leftType) {
+    
+    
+    string getExprType(const Expr *expr) {
         string tname = expr->getType().getAsString();
         removeEnumString(tname);
-        if(leftType != tname) {
-            AppendToViolationSet(binaryOperator, "类型不一致：左边" + leftType + "右边" + tname);
-        }
-        else {
-            std::cout << "类型一致" << leftType <<endl;
-            return;
-        }
+        return tname;
     }
     
-    void p_checkSameType(const BinaryOperator *binaryOperator, const ObjCMessageExpr *messageExpr, string leftType) {
+//    string getDeclRefExprType(const DeclRefExpr *expr) {
+//        string tname = expr->getType().getAsString();
+//        removeEnumString(tname);
+//        return tname;
+//    }
+    
+//    string geObjCBoxedExprType(const ObjCBoxedExpr *expr) {
+//        string tname = expr->getType().getAsString();
+//        removeEnumString(tname);
+//        return tname;
+//    }
+    
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const ObjCBoxedExpr *expr, string lType) {
+        string rType = getExprType(expr); 
+        if(lType != rType) {
+            AppendToViolationSet(binaryOperator, "类型不一致：左边" + lType + "右边" + rType);
+            std::cout << __LINE__ << " 类型不一致" << "左边: " + lType + " <=> 右边: " + rType <<" 当前:" << kGlobalNum <<endl;
+        }
+        else {
+            std::cout << __LINE__ << " 类型一致: " << lType <<" 当前:" << kGlobalNum <<endl;
+        }
+        
+        return true; 
+    }
+    
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const DeclRefExpr *expr, string lType) {
+        string rType = getExprType(expr); 
+        if(lType != rType) {
+            AppendToViolationSet(binaryOperator, "类型不一致：左边" + lType + "右边" + rType);
+            std::cout << __LINE__ << " 类型不一致" << "左边: " + lType + " <=> 右边: " + rType <<" 当前:" << kGlobalNum <<endl;
+        }
+        else {
+            std::cout << __LINE__ << " 类型一致: " << lType <<" 当前:" << kGlobalNum <<endl;
+        }
+        
+        return true; 
+    }
+    
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const ObjCMessageExpr *messageExpr, string leftType) {
         
         //检测是否有指定标记 objc_same_type
         const ObjCMethodDecl *methodDecl = messageExpr->getMethodDecl(); //函数定义
         
         auto resType = methodDecl->getReturnType();
         if(auto T = dyn_cast_or_null<AttributedType>(resType)){
-            if(auto type = dyn_cast_or_null<ObjCTypeParamType>(T->desugar())) {
+            auto T1 = T->desugar();
+            if(auto type = dyn_cast_or_null<ObjCTypeParamType>(T1)) {
                 if(auto ty = dyn_cast_or_null<ObjCObjectPointerType>(type->desugar())) {
-                    string tname =  getObjcObjectType(ty);
-                    if(leftType != tname) {
-                        AppendToViolationSet(binaryOperator, "类型不一致：左边" + leftType + "右边" + tname);
-                        return;
-                    }
-                    else {
-                        std::cout << "类型一致" << leftType <<endl;
-                        return;
-                    }
+                    return p_checkSameType(binaryOperator, ty, leftType);
                 }
+                else {
+                    printf("%d 当前未解析成功 right: %d\n", __LINE__, kGlobalNum);
+                    resType->dump();
+                }
+            }
+            else if(auto ty = dyn_cast_or_null<ObjCObjectPointerType>(T1)) {
+                return p_checkSameType(binaryOperator, ty, leftType);
+            }
+            else {
+                printf("%d 当前未解析成功 right: %d\n", __LINE__, kGlobalNum);
+                T1->dump();
             }
         }
         else if(auto ty = dyn_cast_or_null<ObjCObjectPointerType>(resType)) {
-            string tname =  getObjcObjectType(ty);
-            if(leftType != tname) {
-                AppendToViolationSet(binaryOperator, "类型不一致：左边" + leftType + "右边" + tname);
-                return;
-            }
-            else {
-                std::cout << "类型一致" << leftType <<endl;
-                return;
-            }
+            return p_checkSameType(binaryOperator, ty, leftType);
+        }
+        else if(auto ty = dyn_cast_or_null<TypedefType>(resType)) {
+            QualType dq = ty->desugar();
+            return p_checkSameType(binaryOperator, dq, leftType);
         }
         
-        assert(false);
+        printf("%d 当前未解析成功 left:%s | right: %d\n", __LINE__, leftType.c_str(), kGlobalNum);
+        resType->dump();
         
+        return false;
     }
+    
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const QualType &qy, string leftType) {
+        string tname = qy.getAsString();
+        if(leftType != tname) {
+            AppendToViolationSet(binaryOperator, "类型不一致：左边" + leftType + "右边" + tname);
+            std::cout << __LINE__ << " 类型不一致" << "左边: " + leftType + " <=> 右边: " + tname <<" 当前:" << kGlobalNum <<endl;
+            return true;
+        }
+        else {
+            std::cout << __LINE__ << " 类型一致" << leftType <<"当前:" << kGlobalNum <<endl;
+            return true;
+        }
+    } 
+    
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const ObjCObjectPointerType *ty, string leftType) {
+        string tname =  getObjcObjectType(ty);
+        if(leftType != tname) {
+            AppendToViolationSet(binaryOperator, "类型不一致：左边" + leftType + "右边" + tname);
+            std::cout << __LINE__ << " 类型不一致" << "左边: " + leftType + " <=> 右边: " + tname <<" 当前:" << kGlobalNum <<endl;
+            return true;
+        }
+        else {
+            std::cout << __LINE__ << " 类型一致" << leftType <<"当前:" << kGlobalNum <<endl;
+            return true;
+        }
+    } 
     
     bool isObjcTypeId(const ObjCObjectPointerType *objType) {
         bool ret = false;
@@ -297,7 +412,7 @@ public:
     {
         const BinaryOperator *binaryOperator = result.Nodes.getNodeAs<BinaryOperator>("binaryOperator");
         if (binaryOperator && binaryOperator->isAssignmentOp()) {
-            checkSameType(binaryOperator);
+            doCheckSameType(binaryOperator);
         }
     }
 
@@ -309,4 +424,5 @@ public:
 
 };
 
+int KWSameTypeRuleRule::kGlobalNum = 0;
 static RuleSet rules(new KWSameTypeRuleRule());
