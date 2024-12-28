@@ -48,35 +48,7 @@ public:
         return "";
     }
     
-    string rtrim(const std::string& str) {
-        size_t endPos = str.find_last_not_of(" \t\n\r\f\v");
-        if (endPos!= std::string::npos) {
-            return str.substr(0, endPos + 1);
-        }
-        return "";
-    }
-    
-    void replaceAll(std::string& str, const std::string& from, const std::string& to) {
-        if(from.empty())
-            return;
-        size_t start_pos = 0;
-        while((start_pos = str.find(from, start_pos)) != std::string::npos) {
-            str.replace(start_pos, from.length(), to);
-            start_pos += to.length(); // In case 'to' contains 'from', like replacing 'x' with 'yx'
-        }
-    }
-    
-    void removeEnumString(string &typeString)
-    {
-        replaceAll(typeString, "enum ", "");
-    }
-    
-    string removePtrString(const string typeString)
-    {
-        size_t lastindex = typeString.find_last_of("*");
-        return typeString.substr(0, lastindex);
-    }
-    
+
     
     
     void doCheckSameType(const BinaryOperator *binaryOperator) {
@@ -95,6 +67,7 @@ public:
         else  if (auto *leftExpr = dyn_cast_or_null<DeclRefExpr>(left)) 
         {
             lType = getExprType(leftExpr);
+            lType = rtrim(removePtrString(lType));
         }
         
         if (OpaqueValueExpr *rExpr = dyn_cast_or_null<OpaqueValueExpr>(right)) 
@@ -131,7 +104,9 @@ public:
         
         if(isChecked == false) {
             cout << "当前" << kGlobalNum << "未解析成功 left: type:" << lType << "\n";
-            left->dump();
+            if(lType.size() < 1) {
+                left->dump();
+            }
             
             printf("当前%d未解析成功 right:\n", kGlobalNum);
             right->dump();
@@ -140,7 +115,7 @@ public:
             assert(false);
         }
         
-        printf("\n\n");
+        printf("\n");
     }
     
     const ObjCMessageExpr *getObjcExpr(const Expr *expr) {
@@ -182,6 +157,7 @@ public:
         return rightExpr;
     }
     
+    //隐式对象
     bool p_checkSameType(const BinaryOperator *binaryOperator, const OpaqueValueExpr *rightExpr, string leftType) {
 //        const ObjCMessageExpr * objcExpr = ;
         auto *expr = rightExpr->getSourceExpr();
@@ -191,6 +167,12 @@ public:
         else if(auto E = dyn_cast_or_null<DeclRefExpr>(expr)) {
             return p_checkSameType(binaryOperator, E, leftType);
         }
+        else if(auto E = dyn_cast_or_null<CXXOperatorCallExpr>(expr)) {
+            return p_checkSameType(binaryOperator, E, leftType);
+        }
+        else if(auto E = dyn_cast_or_null<CXXMemberCallExpr>(expr)) {
+            return p_checkSameType(binaryOperator, E, leftType);
+        }
         else {
             assert(false);
         }
@@ -198,13 +180,7 @@ public:
         return false;
     }
     
-    
-    
-    string getExprType(const Expr *expr) {
-        string tname = expr->getType().getAsString();
-        removeEnumString(tname);
-        return tname;
-    }
+
     
 //    string getDeclRefExprType(const DeclRefExpr *expr) {
 //        string tname = expr->getType().getAsString();
@@ -218,29 +194,70 @@ public:
 //        return tname;
 //    }
     
-    bool p_checkSameType(const BinaryOperator *binaryOperator, const ObjCBoxedExpr *expr, string lType) {
-        string rType = getExprType(expr); 
-        if(lType != rType) {
-            AppendToViolationSet(binaryOperator, "类型不一致：左边" + lType + "右边" + rType);
-            std::cout << __LINE__ << " 类型不一致" << "左边: " + lType + " <=> 右边: " + rType <<" 当前:" << kGlobalNum <<endl;
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const CXXMemberCallExpr *expr, string lType) {
+       
+        QualType rQType = expr->getCallReturnType(*_carrier->getASTContext());
+        string opaqueName = "";
+        if(auto ET = dyn_cast_or_null<ElaboratedType>(rQType)) {
+            QualType DT = ET->desugar();
+            opaqueName = DT.getAsString();
+            removeEnumString(opaqueName);
         }
         else {
-            std::cout << __LINE__ << " 类型一致: " << lType <<" 当前:" << kGlobalNum <<endl;
+            opaqueName = rQType.getAsString();
+            removeEnumString(opaqueName);
         }
         
+        
+//        const Expr *callee = expr->getCallee();
+//        string rType = "";
+//        if(auto *E = dyn_cast_or_null<ImplicitCastExpr>(callee)) {
+//            auto *subE = E->getSubExpr();
+//            if(auto *declE = dyn_cast_or_null<DeclRefExpr>(subE)) {
+//                rType = declE->getType().getAsString();
+//                replaceAll(rType, opaqueName+" (", "");
+//                replaceAll(rType, ")", "");
+//            }
+//        }
+        
+        p_checkSameType(binaryOperator, opaqueName, lType);
+        return true; 
+    }
+    
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const CXXOperatorCallExpr *expr, string lType) {
+       
+        QualType rQType = expr->getCallReturnType(*_carrier->getASTContext());
+        string opaqueName = "";
+        if(auto ET = dyn_cast_or_null<ElaboratedType>(rQType)) {
+            QualType DT = ET->desugar();
+            opaqueName = DT.getAsString();
+            removeEnumString(opaqueName);
+        }
+        
+        const Expr *callee = expr->getCallee();
+        string rType = "";
+        if(auto *E = dyn_cast_or_null<ImplicitCastExpr>(callee)) {
+            auto *subE = E->getSubExpr();
+            if(auto *declE = dyn_cast_or_null<DeclRefExpr>(subE)) {
+                rType = declE->getType().getAsString();
+                replaceAll(rType, opaqueName+" (", "");
+                replaceAll(rType, ")", "");
+            }
+        }
+        
+        p_checkSameType(binaryOperator, rType, lType);
+        return true; 
+    }
+    
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const ObjCBoxedExpr *expr, string lType) {
+        string rType = getExprType(expr);
+        p_checkSameType(binaryOperator, rType, lType);
         return true; 
     }
     
     bool p_checkSameType(const BinaryOperator *binaryOperator, const DeclRefExpr *expr, string lType) {
         string rType = getExprType(expr); 
-        if(lType != rType) {
-            AppendToViolationSet(binaryOperator, "类型不一致：左边" + lType + "右边" + rType);
-            std::cout << __LINE__ << " 类型不一致" << "左边: " + lType + " <=> 右边: " + rType <<" 当前:" << kGlobalNum <<endl;
-        }
-        else {
-            std::cout << __LINE__ << " 类型一致: " << lType <<" 当前:" << kGlobalNum <<endl;
-        }
-        
+        p_checkSameType(binaryOperator, rType, lType);
         return true; 
     }
     
@@ -248,6 +265,10 @@ public:
         
         //检测是否有指定标记 objc_same_type
         const ObjCMethodDecl *methodDecl = messageExpr->getMethodDecl(); //函数定义
+        string selector = messageExpr->getSelector().getAsString();
+        if(selector == "init" || selector == "new") {//初始化不做处理
+            return true;
+        }
         
         auto resType = methodDecl->getReturnType();
         if(auto T = dyn_cast_or_null<AttributedType>(resType)){
@@ -272,7 +293,8 @@ public:
         else if(auto ty = dyn_cast_or_null<ObjCObjectPointerType>(resType)) {
             return p_checkSameType(binaryOperator, ty, leftType);
         }
-        else if(auto ty = dyn_cast_or_null<TypedefType>(resType)) {
+        else if(const TypedefType *ty = dyn_cast_or_null<TypedefType>(resType)) {
+            
             QualType dq = ty->desugar();
             return p_checkSameType(binaryOperator, dq, leftType);
         }
@@ -284,29 +306,35 @@ public:
     }
     
     bool p_checkSameType(const BinaryOperator *binaryOperator, const QualType &qy, string leftType) {
-        string tname = qy.getAsString();
-        if(leftType != tname) {
-            AppendToViolationSet(binaryOperator, "类型不一致：左边" + leftType + "右边" + tname);
-            std::cout << __LINE__ << " 类型不一致" << "左边: " + leftType + " <=> 右边: " + tname <<" 当前:" << kGlobalNum <<endl;
-            return true;
-        }
-        else {
-            std::cout << __LINE__ << " 类型一致" << leftType <<"当前:" << kGlobalNum <<endl;
-            return true;
-        }
+        string rname = qy.getAsString();
+        p_checkSameType(binaryOperator, rname, leftType);
+        
+        return true;
     } 
     
-    bool p_checkSameType(const BinaryOperator *binaryOperator, const ObjCObjectPointerType *ty, string leftType) {
-        string tname =  getObjcObjectType(ty);
-        if(leftType != tname) {
-            AppendToViolationSet(binaryOperator, "类型不一致：左边" + leftType + "右边" + tname);
-            std::cout << __LINE__ << " 类型不一致" << "左边: " + leftType + " <=> 右边: " + tname <<" 当前:" << kGlobalNum <<endl;
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const string &rName, const string &lName) {
+        string rrName = lrtrim(removePtrString(rName));
+        if(rrName != lName) {
+            
+            if(lName=="id") {
+                std::cout << __LINE__ << " 类型不一致" << "左边: " + lName + " <=> 右边: " + rName <<" 当前:" << kGlobalNum <<endl;    
+            }
+            else {
+                std::cout << __LINE__ << " 类型不一致" << "左边: " + lName + " <=> 右边: " + rName <<" 当前:" << kGlobalNum <<endl;
+                AppendToViolationSet(binaryOperator, "赋值两侧类型不一致 左边:" + lName + " - 右边:" + rName);
+            }
             return true;
         }
         else {
-            std::cout << __LINE__ << " 类型一致" << leftType <<"当前:" << kGlobalNum <<endl;
+            std::cout << __LINE__ << " 类型一致" << lName <<"当前:" << kGlobalNum <<endl;
             return true;
         }
+    }
+    
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const ObjCObjectPointerType *ty, string leftType) {
+        string rname =  getObjcObjectType(ty);
+        p_checkSameType(binaryOperator, rname, leftType);
+        return true;
     } 
     
     bool isObjcTypeId(const ObjCObjectPointerType *objType) {
@@ -317,6 +345,54 @@ public:
         }
         
         return ret;
+    }
+    
+    string rtrim(const std::string& str) {
+        size_t endPos = str.find_last_not_of(" \t\n\r\f\v");
+        if (endPos!= std::string::npos) {
+            return str.substr(0, endPos + 1);
+        }
+        return "";
+    }
+    
+    std::string lrtrim(const std::string& str) {
+        // 去除左边空白字符
+        size_t first = str.find_first_not_of(" \t\n\r");
+        if (first == std::string::npos) {
+            return "";
+        }
+        // 去除右边空白字符
+        size_t last = str.find_last_not_of(" \t\n\r");
+        return str.substr(first, (last - first + 1));
+    }
+    
+    void replaceAll(std::string& str, const std::string& from, const std::string& to) {
+        if(from.empty())
+            return;
+        size_t start_pos = 0;
+        while((start_pos = str.find(from, start_pos)) != std::string::npos) {
+            str.replace(start_pos, from.length(), to);
+            start_pos += to.length(); // In case 'to' contains 'from', like replacing 'x' with 'yx'
+        }
+    }
+    
+    void removeEnumString(string &typeString)
+    {
+        replaceAll(typeString, "enum ", "");
+        replaceAll(typeString, "class ", "");
+    }
+    
+    string removePtrString(const string typeString)
+    {
+        size_t lastindex = typeString.find_last_of("*");
+        return typeString.substr(0, lastindex);
+    }
+    
+    
+    string getExprType(const Expr *expr) {
+        string tname = expr->getType().getAsString();
+        removeEnumString(tname);
+        return tname;
     }
     
     string getObjcObjectType(const ObjCObjectPointerType *objType)
