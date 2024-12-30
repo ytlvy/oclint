@@ -70,6 +70,7 @@ public:
             lType = rtrim(removePtrString(lType));
         }
         
+        //右侧
         if (OpaqueValueExpr *rExpr = dyn_cast_or_null<OpaqueValueExpr>(right)) 
         { //如果右边表达式是 Objective-C 的函数调用
             if(lType.size()>0 && rExpr != nullptr) {
@@ -77,13 +78,14 @@ public:
             }
         }
         else if (ImplicitCastExpr *rightE = dyn_cast_or_null<ImplicitCastExpr>(right)) {
-            auto *rExpr = getObjcExpr(rightE->getSubExpr());
-            if(lType.size()>0 && rExpr != nullptr) {
+            auto subExpr = rightE->getSubExpr();
+            if(auto *rExpr = getObjcExpr(subExpr)) {
                 isChecked = p_checkSameType(binaryOperator, rExpr, lType);
             }
-            
-            auto *rExpr1 = getDeclRefExpr(rightE->getSubExpr());
-            if(lType.size()>0 && rExpr1)
+            else if(auto *callE = dyn_cast_or_null<CallExpr>(subExpr)) {
+                isChecked = p_checkSameType(binaryOperator, callE, lType);
+            }
+            else if(auto *rExpr1 = getDeclRefExpr(subExpr))
             {
                 isChecked = p_checkSameType(binaryOperator, rExpr1, lType);
             }
@@ -118,43 +120,44 @@ public:
         printf("\n");
     }
     
-    const ObjCMessageExpr *getObjcExpr(const Expr *expr) {
-        const ObjCMessageExpr *rightExpr = nullptr;
-        if (auto *messageExpr = dyn_cast_or_null<ObjCMessageExpr>(expr)) {
-            return messageExpr;
-        }
-        else if (auto *castExpr = dyn_cast_or_null<ImplicitCastExpr>(expr)) {
-            return getObjcExpr(castExpr->getSubExpr());
-        }
-        else if(auto *pseudoExpr = dyn_cast_or_null<PseudoObjectExpr>(expr)){
-            return getObjcExpr(pseudoExpr->getResultExpr());
-        }
-        else {
-            printf("%d getObjcExpr 不是 ObjCMessageExprn: %d\n", __LINE__, kGlobalNum);
-            expr->dump();
-        }
-        
-        return rightExpr;
+   
+    
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const CallExpr *expr, string lType) {
+        QualType rQType = expr->getCallReturnType(*_carrier->getASTContext());
+        p_checkSameType(binaryOperator, rQType, lType);
+        return true; 
     }
     
-    const DeclRefExpr *getDeclRefExpr(const Expr *expr) {
-        const DeclRefExpr *rightExpr = nullptr;
-        if(auto *declExpr = dyn_cast_or_null<DeclRefExpr>(expr)){
-            return declExpr;
-        }
-        else if (auto *castExpr = dyn_cast_or_null<ImplicitCastExpr>(expr)) {
-            return getDeclRefExpr(castExpr->getSubExpr());
-        }
-        else if(auto *pseudoExpr = dyn_cast_or_null<PseudoObjectExpr>(expr)){
-            return getDeclRefExpr(pseudoExpr->getResultExpr());
+    
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const CXXMemberCallExpr *expr, string lType) {
+        QualType rQType = expr->getCallReturnType(*_carrier->getASTContext());
+        p_checkSameType(binaryOperator, rQType, lType);
+        return true; 
+    }
+    
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const QualType &rQType, string lType) {
+        string opaqueName = "";
+        if(auto ET = dyn_cast_or_null<ElaboratedType>(rQType)) {
+            QualType DT = ET->desugar();
+            opaqueName = DT.getAsString();
         }
         else {
-            printf("%d getObjcExpr 不是 DeclRefExpr: %d\n", __LINE__, kGlobalNum);
-            expr->dump();
-            printf("\n");
+            opaqueName = rQType.getAsString();
         }
         
-        return rightExpr;
+        //        const Expr *callee = expr->getCallee();
+        //        string rType = "";
+        //        if(auto *E = dyn_cast_or_null<ImplicitCastExpr>(callee)) {
+        //            auto *subE = E->getSubExpr();
+        //            if(auto *declE = dyn_cast_or_null<DeclRefExpr>(subE)) {
+        //                rType = declE->getType().getAsString();
+        //                replaceAll(rType, opaqueName+" (", "");
+        //                replaceAll(rType, ")", "");
+        //            }
+        //        }
+        
+        p_checkSameType(binaryOperator, opaqueName, lType);
+        return true; 
     }
     
     //隐式对象
@@ -179,7 +182,6 @@ public:
         
         return false;
     }
-    
 
     
 //    string getDeclRefExprType(const DeclRefExpr *expr) {
@@ -193,37 +195,7 @@ public:
 //        removeEnumString(tname);
 //        return tname;
 //    }
-    
-    bool p_checkSameType(const BinaryOperator *binaryOperator, const CXXMemberCallExpr *expr, string lType) {
-       
-        QualType rQType = expr->getCallReturnType(*_carrier->getASTContext());
-        string opaqueName = "";
-        if(auto ET = dyn_cast_or_null<ElaboratedType>(rQType)) {
-            QualType DT = ET->desugar();
-            opaqueName = DT.getAsString();
-            removeEnumString(opaqueName);
-        }
-        else {
-            opaqueName = rQType.getAsString();
-            removeEnumString(opaqueName);
-        }
-        
-        
-//        const Expr *callee = expr->getCallee();
-//        string rType = "";
-//        if(auto *E = dyn_cast_or_null<ImplicitCastExpr>(callee)) {
-//            auto *subE = E->getSubExpr();
-//            if(auto *declE = dyn_cast_or_null<DeclRefExpr>(subE)) {
-//                rType = declE->getType().getAsString();
-//                replaceAll(rType, opaqueName+" (", "");
-//                replaceAll(rType, ")", "");
-//            }
-//        }
-        
-        p_checkSameType(binaryOperator, opaqueName, lType);
-        return true; 
-    }
-    
+
     bool p_checkSameType(const BinaryOperator *binaryOperator, const CXXOperatorCallExpr *expr, string lType) {
        
         QualType rQType = expr->getCallReturnType(*_carrier->getASTContext());
@@ -231,7 +203,7 @@ public:
         if(auto ET = dyn_cast_or_null<ElaboratedType>(rQType)) {
             QualType DT = ET->desugar();
             opaqueName = DT.getAsString();
-            removeEnumString(opaqueName);
+//            removeEnumString(opaqueName);
         }
         
         const Expr *callee = expr->getCallee();
@@ -266,7 +238,7 @@ public:
         //检测是否有指定标记 objc_same_type
         const ObjCMethodDecl *methodDecl = messageExpr->getMethodDecl(); //函数定义
         string selector = messageExpr->getSelector().getAsString();
-        if(selector == "init" || selector == "new") {//初始化不做处理
+        if(selector == "init" || selector == "new" || selector == "initWithFrame:") {//初始化不做处理
             return true;
         }
         
@@ -298,6 +270,9 @@ public:
             QualType dq = ty->desugar();
             return p_checkSameType(binaryOperator, dq, leftType);
         }
+        else if(auto ty = dyn_cast_or_null<BuiltinType>(resType)) {
+            return p_checkSameType(binaryOperator, ty, leftType);
+        }
         
         printf("%d 当前未解析成功 left:%s | right: %d\n", __LINE__, leftType.c_str(), kGlobalNum);
         resType->dump();
@@ -305,15 +280,28 @@ public:
         return false;
     }
     
-    bool p_checkSameType(const BinaryOperator *binaryOperator, const QualType &qy, string leftType) {
-        string rname = qy.getAsString();
-        p_checkSameType(binaryOperator, rname, leftType);
+    bool startWith(const std::string& str, const std::string& prefix) {
+        if (str.length() >= prefix.length()) {
+            std::string sub = str.substr(0, prefix.length());
+            return sub == prefix;
+        }
+        return false;
+    }
+    
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const BuiltinType *expr, string lType) {
         
-        return true;
-    } 
+        bool isNumber = expr->isInteger() || expr->isFloatingType();
+        if(isNumber) {
+            return true;
+        }
+        
+        return false; 
+    }
+
     
     bool p_checkSameType(const BinaryOperator *binaryOperator, const string &rName, const string &lName) {
         string rrName = lrtrim(removePtrString(rName));
+        removeEnumString(rrName);
         if(rrName != lName) {
             
             if(lName=="id") {
@@ -336,6 +324,45 @@ public:
         p_checkSameType(binaryOperator, rname, leftType);
         return true;
     } 
+    
+    const ObjCMessageExpr *getObjcExpr(const Expr *expr) {
+        const ObjCMessageExpr *rightExpr = nullptr;
+        if (auto *messageExpr = dyn_cast_or_null<ObjCMessageExpr>(expr)) {
+            return messageExpr;
+        }
+        else if (auto *castExpr = dyn_cast_or_null<ImplicitCastExpr>(expr)) {
+            return getObjcExpr(castExpr->getSubExpr());
+        }
+        else if(auto *pseudoExpr = dyn_cast_or_null<PseudoObjectExpr>(expr)){
+            return getObjcExpr(pseudoExpr->getResultExpr());
+        }
+        else {
+            printf("%d getObjcExpr 不是 ObjCMessageExprn: %d\n", __LINE__, kGlobalNum);
+//            expr->dump();
+        }
+        
+        return rightExpr;
+    }
+    
+    const DeclRefExpr *getDeclRefExpr(const Expr *expr) {
+        const DeclRefExpr *rightExpr = nullptr;
+        if(auto *declExpr = dyn_cast_or_null<DeclRefExpr>(expr)){
+            return declExpr;
+        }
+        else if (auto *castExpr = dyn_cast_or_null<ImplicitCastExpr>(expr)) {
+            return getDeclRefExpr(castExpr->getSubExpr());
+        }
+        else if(auto *pseudoExpr = dyn_cast_or_null<PseudoObjectExpr>(expr)){
+            return getDeclRefExpr(pseudoExpr->getResultExpr());
+        }
+        else {
+            printf("%d getObjcExpr 不是 DeclRefExpr: %d\n", __LINE__, kGlobalNum);
+            expr->dump();
+            printf("\n");
+        }
+        
+        return rightExpr;
+    }
     
     bool isObjcTypeId(const ObjCObjectPointerType *objType) {
         bool ret = false;
