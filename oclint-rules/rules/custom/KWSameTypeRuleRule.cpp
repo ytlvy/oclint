@@ -69,6 +69,12 @@ public:
             lType = getExprType(leftExpr);
             lType = rtrim(removePtrString(lType));
         }
+        else  if (auto *leftExpr = dyn_cast_or_null<Expr>(left)) 
+        {
+            QualType rQType = leftExpr->getType();
+            lType = getQualTypeName(rQType);
+        }
+        
         
         //右侧
         if (OpaqueValueExpr *rExpr = dyn_cast_or_null<OpaqueValueExpr>(right)) 
@@ -79,15 +85,17 @@ public:
         }
         else if (ImplicitCastExpr *rightE = dyn_cast_or_null<ImplicitCastExpr>(right)) {
             auto subExpr = rightE->getSubExpr();
-            if(auto *rExpr = getObjcExpr(subExpr)) {
-                isChecked = p_checkSameType(binaryOperator, rExpr, lType);
-            }
-            else if(auto *callE = dyn_cast_or_null<CallExpr>(subExpr)) {
-                isChecked = p_checkSameType(binaryOperator, callE, lType);
-            }
-            else if(auto *rExpr1 = getDeclRefExpr(subExpr))
+            QualType rQType = subExpr->getType();
+            if (auto *rExpr1 = dyn_cast_or_null<Expr>(subExpr)) 
             {
-                isChecked = p_checkSameType(binaryOperator, rExpr1, lType);
+                QualType rQType = rExpr1->getType();
+                isChecked = p_checkSameType(binaryOperator, rQType, lType);
+            }
+            
+            if(!isChecked) {
+                if(auto rExpr = dyn_cast_or_null<Expr>(right)) {
+                    isChecked = p_checkSameType(binaryOperator, rExpr, lType);
+                }
             }
         }
         else if (ObjCMessageExpr *rExpr = dyn_cast_or_null<ObjCMessageExpr>(right)) 
@@ -102,10 +110,19 @@ public:
                 isChecked = p_checkSameType(binaryOperator, rExpr, lType);
             }
         }
+        else if(auto rExpr = dyn_cast_or_null<CXXBoolLiteralExpr>(right)) {
+            isChecked =  lType == "_Bool" || lType == "bool";
+        }
+        else if(auto rExpr = dyn_cast_or_null<CallExpr>(right)) {
+            isChecked = p_checkSameType(binaryOperator, rExpr, lType);
+        }
+        else if(auto rExpr = dyn_cast_or_null<Expr>(right)) {
+            isChecked = p_checkSameType(binaryOperator, rExpr, lType);
+        }
         
         
         if(isChecked == false) {
-            cout << "当前" << kGlobalNum << "未解析成功 left: type:" << lType << "\n";
+            cout << "当前" << kGlobalNum << "未解析成功 left:" << lType << "\n";
             if(lType.size() < 1) {
                 left->dump();
             }
@@ -120,7 +137,37 @@ public:
         printf("\n");
     }
     
-   
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const Expr *expr, string lType) {
+        if (auto *castExpr = dyn_cast_or_null<ImplicitCastExpr>(expr)) {
+            return p_checkSameType(binaryOperator, castExpr->getSubExpr(), lType);
+        }
+        else if(auto *pseudoExpr = dyn_cast_or_null<PseudoObjectExpr>(expr)){
+            return p_checkSameType(binaryOperator, pseudoExpr->getResultExpr(), lType);
+        }
+        else if(auto messageExpr = dyn_cast_or_null<ObjCMessageExpr>(expr)) {
+            return p_checkSameType(binaryOperator, messageExpr, lType);
+        }
+        else if(auto E = dyn_cast_or_null<DeclRefExpr>(expr)) {
+            return p_checkSameType(binaryOperator, E, lType);
+        }
+        else if(auto *callE = dyn_cast_or_null<CallExpr>(expr)) {
+            return p_checkSameType(binaryOperator, callE, lType);
+        }
+        else if(auto E = dyn_cast_or_null<CXXOperatorCallExpr>(expr)) {
+            return p_checkSameType(binaryOperator, E, lType);
+        }
+        else if(auto E = dyn_cast_or_null<CXXMemberCallExpr>(expr)) {
+            return p_checkSameType(binaryOperator, E, lType);
+        }
+        else if(auto E = dyn_cast_or_null<CXXBindTemporaryExpr>(expr)) {
+            auto subE = E->getSubExpr();
+            return p_checkSameType(binaryOperator, subE, lType);
+        }
+        
+        QualType rQType = expr->getType();
+        p_checkSameType(binaryOperator, rQType, lType);
+        return true; 
+    }
     
     bool p_checkSameType(const BinaryOperator *binaryOperator, const CallExpr *expr, string lType) {
         QualType rQType = expr->getCallReturnType(*_carrier->getASTContext());
@@ -135,15 +182,10 @@ public:
         return true; 
     }
     
+    
+    
     bool p_checkSameType(const BinaryOperator *binaryOperator, const QualType &rQType, string lType) {
-        string opaqueName = "";
-        if(auto ET = dyn_cast_or_null<ElaboratedType>(rQType)) {
-            QualType DT = ET->desugar();
-            opaqueName = DT.getAsString();
-        }
-        else {
-            opaqueName = rQType.getAsString();
-        }
+        string opaqueName = getQualTypeName(rQType);
         
         //        const Expr *callee = expr->getCallee();
         //        string rType = "";
@@ -162,25 +204,8 @@ public:
     
     //隐式对象
     bool p_checkSameType(const BinaryOperator *binaryOperator, const OpaqueValueExpr *rightExpr, string leftType) {
-//        const ObjCMessageExpr * objcExpr = ;
         auto *expr = rightExpr->getSourceExpr();
-        if(auto messageExpr = dyn_cast_or_null<ObjCMessageExpr>(getObjcExpr(expr))) {
-            return p_checkSameType(binaryOperator, messageExpr, leftType);
-        }
-        else if(auto E = dyn_cast_or_null<DeclRefExpr>(expr)) {
-            return p_checkSameType(binaryOperator, E, leftType);
-        }
-        else if(auto E = dyn_cast_or_null<CXXOperatorCallExpr>(expr)) {
-            return p_checkSameType(binaryOperator, E, leftType);
-        }
-        else if(auto E = dyn_cast_or_null<CXXMemberCallExpr>(expr)) {
-            return p_checkSameType(binaryOperator, E, leftType);
-        }
-        else {
-            assert(false);
-        }
-        
-        return false;
+        return p_checkSameType(binaryOperator, expr, leftType);
     }
 
     
@@ -196,15 +221,23 @@ public:
 //        return tname;
 //    }
 
-    bool p_checkSameType(const BinaryOperator *binaryOperator, const CXXOperatorCallExpr *expr, string lType) {
-       
-        QualType rQType = expr->getCallReturnType(*_carrier->getASTContext());
+    string getQualTypeName(const QualType &rQType) {
         string opaqueName = "";
         if(auto ET = dyn_cast_or_null<ElaboratedType>(rQType)) {
             QualType DT = ET->desugar();
             opaqueName = DT.getAsString();
-//            removeEnumString(opaqueName);
         }
+        else {
+            opaqueName = rQType.getAsString();
+        }
+        removeEnumString(opaqueName);
+        return opaqueName;
+    }
+    
+    bool p_checkSameType(const BinaryOperator *binaryOperator, const CXXOperatorCallExpr *expr, string lType) {
+       
+        QualType rQType = expr->getCallReturnType(*_carrier->getASTContext());
+        string opaqueName = getQualTypeName(rQType);
         
         const Expr *callee = expr->getCallee();
         string rType = "";
@@ -302,7 +335,12 @@ public:
     bool p_checkSameType(const BinaryOperator *binaryOperator, const string &rName, const string &lName) {
         string rrName = lrtrim(removePtrString(rName));
         removeEnumString(rrName);
-        if(rrName != lName) {
+        getNormlizationType(rrName);
+        
+        string llName = lName;
+        getNormlizationType(llName);
+        
+        if(rrName != llName) {
             
             if(lName=="id") {
                 std::cout << __LINE__ << " 类型不一致" << "左边: " + lName + " <=> 右边: " + rName <<" 当前:" << kGlobalNum <<endl;    
@@ -324,45 +362,6 @@ public:
         p_checkSameType(binaryOperator, rname, leftType);
         return true;
     } 
-    
-    const ObjCMessageExpr *getObjcExpr(const Expr *expr) {
-        const ObjCMessageExpr *rightExpr = nullptr;
-        if (auto *messageExpr = dyn_cast_or_null<ObjCMessageExpr>(expr)) {
-            return messageExpr;
-        }
-        else if (auto *castExpr = dyn_cast_or_null<ImplicitCastExpr>(expr)) {
-            return getObjcExpr(castExpr->getSubExpr());
-        }
-        else if(auto *pseudoExpr = dyn_cast_or_null<PseudoObjectExpr>(expr)){
-            return getObjcExpr(pseudoExpr->getResultExpr());
-        }
-        else {
-            printf("%d getObjcExpr 不是 ObjCMessageExprn: %d\n", __LINE__, kGlobalNum);
-//            expr->dump();
-        }
-        
-        return rightExpr;
-    }
-    
-    const DeclRefExpr *getDeclRefExpr(const Expr *expr) {
-        const DeclRefExpr *rightExpr = nullptr;
-        if(auto *declExpr = dyn_cast_or_null<DeclRefExpr>(expr)){
-            return declExpr;
-        }
-        else if (auto *castExpr = dyn_cast_or_null<ImplicitCastExpr>(expr)) {
-            return getDeclRefExpr(castExpr->getSubExpr());
-        }
-        else if(auto *pseudoExpr = dyn_cast_or_null<PseudoObjectExpr>(expr)){
-            return getDeclRefExpr(pseudoExpr->getResultExpr());
-        }
-        else {
-            printf("%d getObjcExpr 不是 DeclRefExpr: %d\n", __LINE__, kGlobalNum);
-            expr->dump();
-            printf("\n");
-        }
-        
-        return rightExpr;
-    }
     
     bool isObjcTypeId(const ObjCObjectPointerType *objType) {
         bool ret = false;
@@ -407,6 +406,24 @@ public:
     {
         replaceAll(typeString, "enum ", "");
         replaceAll(typeString, "class ", "");
+        replaceAll(typeString, " _Nullable", "");
+    }
+    
+    
+    void getNormlizationType(string &typeString)
+    {
+        replaceAll(typeString, "float", "CGFloat");
+        replaceAll(typeString, "double", "CGFloat");
+        replaceAll(typeString, "int8_t", "NSInteger");
+        replaceAll(typeString, "int", "NSInteger");
+        replaceAll(typeString, "int16_t", "NSInteger");
+        replaceAll(typeString, "int32_t", "NSInteger");
+        replaceAll(typeString, "int64_t", "NSInteger");
+        replaceAll(typeString, "const", "");
+        replaceAll(typeString, "  ", " ");
+        replaceAll(typeString, "NSUInteger", "NSInteger");
+        typeString = removePtrString(typeString);
+        typeString = lrtrim(typeString);
     }
     
     string removePtrString(const string typeString)
