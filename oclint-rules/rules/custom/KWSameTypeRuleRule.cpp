@@ -1,6 +1,7 @@
 #include "oclint/AbstractASTMatcherRule.h"
 #include "oclint/RuleSet.h"
 #include <iostream>
+#include <regex>
 
 using namespace std;
 using namespace clang;
@@ -134,7 +135,7 @@ public:
             assert(false);
         }
         
-        printf("\n");
+//        printf("\n");
     }
     
     bool p_checkSameType(const BinaryOperator *binaryOperator, const Expr *expr, string lType) {
@@ -150,9 +151,6 @@ public:
         else if(auto E = dyn_cast_or_null<DeclRefExpr>(expr)) {
             return p_checkSameType(binaryOperator, E, lType);
         }
-        else if(auto *callE = dyn_cast_or_null<CallExpr>(expr)) {
-            return p_checkSameType(binaryOperator, callE, lType);
-        }
         else if(auto E = dyn_cast_or_null<CXXOperatorCallExpr>(expr)) {
             return p_checkSameType(binaryOperator, E, lType);
         }
@@ -162,6 +160,12 @@ public:
         else if(auto E = dyn_cast_or_null<CXXBindTemporaryExpr>(expr)) {
             auto subE = E->getSubExpr();
             return p_checkSameType(binaryOperator, subE, lType);
+        }
+        else if(auto *callE = dyn_cast_or_null<CallExpr>(expr)) {
+            return p_checkSameType(binaryOperator, callE, lType);
+        }
+        else if(auto *callE = dyn_cast_or_null<CXXNullPtrLiteralExpr>(expr)) {
+            return true;
         }
         
         QualType rQType = expr->getType();
@@ -284,12 +288,22 @@ public:
                 }
                 else {
                     printf("%d 当前未解析成功 right: %d\n", __LINE__, kGlobalNum);
-                    resType->dump();
+                    T1->dump();
                 }
             }
             else if(auto ty = dyn_cast_or_null<ObjCObjectPointerType>(T1)) {
                 return p_checkSameType(binaryOperator, ty, leftType);
             }
+            else if(auto *ty = dyn_cast_or_null<TypedefType>(T1)) {
+                
+                QualType dq = ty->desugar();
+                return p_checkSameType(binaryOperator, dq, leftType);
+            }
+            else if(auto *ty = dyn_cast_or_null<ElaboratedType>(T1)) {
+                QualType dq = ty->desugar();
+                return p_checkSameType(binaryOperator, dq, leftType);
+            }
+            
             else {
                 printf("%d 当前未解析成功 right: %d\n", __LINE__, kGlobalNum);
                 T1->dump();
@@ -305,6 +319,9 @@ public:
         }
         else if(auto ty = dyn_cast_or_null<BuiltinType>(resType)) {
             return p_checkSameType(binaryOperator, ty, leftType);
+        }
+        else {
+            return p_checkSameType(binaryOperator, resType, leftType);
         }
         
         printf("%d 当前未解析成功 left:%s | right: %d\n", __LINE__, leftType.c_str(), kGlobalNum);
@@ -342,17 +359,17 @@ public:
         
         if(rrName != llName) {
             
-            if(lName=="id") {
+            if(lName=="id" || lName == "<pseudo-object type>") {
                 std::cout << __LINE__ << " 类型不一致" << "左边: " + lName + " <=> 右边: " + rName <<" 当前:" << kGlobalNum <<endl;    
             }
-            else {
+            else if(rrName == "id" && llName != "id") {
                 std::cout << __LINE__ << " 类型不一致" << "左边: " + lName + " <=> 右边: " + rName <<" 当前:" << kGlobalNum <<endl;
                 AppendToViolationSet(binaryOperator, "赋值两侧类型不一致 左边:" + lName + " - 右边:" + rName);
             }
             return true;
         }
         else {
-            std::cout << __LINE__ << " 类型一致" << lName <<"当前:" << kGlobalNum <<endl;
+//            std::cout << __LINE__ << " 类型一致" << lName <<"当前:" << kGlobalNum <<endl;
             return true;
         }
     }
@@ -412,16 +429,42 @@ public:
     
     void getNormlizationType(string &typeString)
     {
-        replaceAll(typeString, "float", "CGFloat");
-        replaceAll(typeString, "double", "CGFloat");
+        
+        replaceAll(typeString, "unsigned long", "NSInteger");
+        replaceAll(typeString, "unsigned int", "NSInteger");
+        
         replaceAll(typeString, "int8_t", "NSInteger");
-        replaceAll(typeString, "int", "NSInteger");
         replaceAll(typeString, "int16_t", "NSInteger");
         replaceAll(typeString, "int32_t", "NSInteger");
         replaceAll(typeString, "int64_t", "NSInteger");
+        replaceAll(typeString, "int", "NSInteger");
         replaceAll(typeString, "const", "");
-        replaceAll(typeString, "  ", " ");
+        replaceAll(typeString, "float", "CGFloat");
+        replaceAll(typeString, "double", "CGFloat");
+        replaceAll(typeString, "UI_APPEARANCE_SELECTOR", "");
+        
+        replaceAll(typeString, "size_t", "NSInteger");
+        replaceAll(typeString, "long", "NSInteger");
+        replaceAll(typeString, "CFIndex", "NSInteger");
+        
+        replaceAll(typeString, "NSTimeInterval", "NSInteger");
+        replaceAll(typeString, "CFTimeInterval", "NSInteger");
+        
+        replaceAll(typeString, "CGFloat", "NSInteger");
+        
+        replaceAll(typeString, "_Nullable", "");
+        replaceAll(typeString, "__strong", "");
+        replaceAll(typeString, "__weak", "");
+        replaceAll(typeString, "_Nonnull", "");
+        replaceAll(typeString, "API_AVAILABLE(ios(6.0))", "");
+        
+        {
+            std::regex pattern("API_AVAILABLE\(.*\)");
+            typeString = std::regex_replace(typeString, pattern, "");
+        }       
+        
         replaceAll(typeString, "NSUInteger", "NSInteger");
+        replaceAll(typeString, "  ", " ");
         typeString = removePtrString(typeString);
         typeString = lrtrim(typeString);
     }
