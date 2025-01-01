@@ -132,7 +132,7 @@ public:
             right->dump();
             
             printf("%d 当前%d未解析成功\n", __LINE__, kGlobalNum);
-            assert(false);
+//            assert(false);
         }
         
 //        printf("\n");
@@ -270,12 +270,34 @@ public:
         return true; 
     }
     
+    bool startsWith(const std::string& str, const std::string& subStr) {
+        if (subStr.length() > str.length()) {
+            return false;
+        }
+        std::string startPart = str.substr(0, subStr.length());
+        return startPart == subStr;
+    }
+    
     bool p_checkSameType(const BinaryOperator *binaryOperator, const ObjCMessageExpr *messageExpr, string leftType) {
+        
+        // 初始化方法
+        if(messageExpr->isDelegateInitCall()) {
+            return true;
+        }
         
         //检测是否有指定标记 objc_same_type
         const ObjCMethodDecl *methodDecl = messageExpr->getMethodDecl(); //函数定义
         string selector = messageExpr->getSelector().getAsString();
-        if(selector == "init" || selector == "new" || selector == "initWithFrame:") {//初始化不做处理
+        if(selector == "init" 
+           || selector == "new" 
+           || selector == "initWithFrame:" 
+           || selector == "copy" 
+           || selector == "mutableCopy"
+           || selector == "autorelease"
+           || startsWith(selector, "initWith")
+           || startsWith(selector, "stringWithFormat:")
+           || startsWith(selector, "arrayWithObject:")
+           ) {//初始化不做处理
             return true;
         }
         
