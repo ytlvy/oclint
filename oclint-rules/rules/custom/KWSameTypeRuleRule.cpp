@@ -87,7 +87,13 @@ public:
         else if (ImplicitCastExpr *rightE = dyn_cast_or_null<ImplicitCastExpr>(right)) {
             auto subExpr = rightE->getSubExpr();
             QualType rQType = subExpr->getType();
-            if (auto *rExpr1 = dyn_cast_or_null<Expr>(subExpr)) 
+            if (ObjCMessageExpr *rExpr = dyn_cast_or_null<ObjCMessageExpr>(subExpr)) 
+            { //如果右边表达式是 Objective-C 的函数调用
+                if(lType.size()>0 && rExpr != nullptr) {
+                    isChecked = p_checkSameType(binaryOperator, rExpr, lType);
+                }
+            }
+            else if (auto *rExpr1 = dyn_cast_or_null<Expr>(subExpr)) 
             {
                 QualType rQType = rExpr1->getType();
                 isChecked = p_checkSameType(binaryOperator, rQType, lType);
@@ -294,8 +300,13 @@ public:
            || selector == "copy" 
            || selector == "mutableCopy"
            || selector == "autorelease"
+           || selector == "date"
+           || startsWith(selector, "videoCompositionLayerInstructionWithAssetTrack")
+           || startsWith(selector, "errorWithDomain")
+           || startsWith(selector, "dictionaryWithDictionary")
+           || startsWith(selector, "allocWith")
            || startsWith(selector, "initWith")
-           || startsWith(selector, "stringWithFormat:")
+           || startsWith(selector, "stringWith")
            || startsWith(selector, "arrayWithObject:")
            ) {//初始化不做处理
             return true;
@@ -382,7 +393,7 @@ public:
         if(rrName != llName) {
             
             if(lName=="id" || lName == "<pseudo-object type>") {
-                std::cout << __LINE__ << " 类型不一致" << "左边: " + lName + " <=> 右边: " + rName <<" 当前:" << kGlobalNum <<endl;    
+//                std::cout << __LINE__ << " 类型不一致" << "左边: " + lName + " <=> 右边: " + rName <<" 当前:" << kGlobalNum <<endl;    
             }
             else if(rrName == "id" && llName != "id") {
                 std::cout << __LINE__ << " 类型不一致" << "左边: " + lName + " <=> 右边: " + rName <<" 当前:" << kGlobalNum <<endl;
@@ -451,7 +462,7 @@ public:
     
     void getNormlizationType(string &typeString)
     {
-        
+        replaceAll(typeString, "__unsafe_unretained", "NSInteger");
         replaceAll(typeString, "unsigned long", "NSInteger");
         replaceAll(typeString, "unsigned int", "NSInteger");
         
